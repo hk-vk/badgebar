@@ -12,9 +12,23 @@ enum BadgeStyle: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How a badge draws attention when something new arrives.
+enum BadgeEffect: String, Codable, CaseIterable, Identifiable {
+    case off, pulse, glow, shimmer
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .off: return "Off"
+        case .pulse: return "Pulse"
+        case .glow: return "Glow"
+        case .shimmer: return "Shimmer"
+        }
+    }
+}
+
 /// What to do with a menu bar item when its app has no badge.
 enum EmptyBehavior: String, Codable, CaseIterable, Identifiable {
-    /// Follow the global setting in General.
+    /// Follow the global setting in Appearance.
     case useDefault
     case dim, hide, show
     var id: String { rawValue }
@@ -85,6 +99,12 @@ struct GeneralSettings: Codable, Hashable {
     var showHoverPreviews = true
     /// What icons do when their app has nothing new, unless an app overrides it.
     var emptyBehavior: EmptyBehavior = .dim
+    /// Hide icons for apps that aren't open, unless they still show a badge.
+    var hideWhenNotRunning = false
+    /// Animates a badge when it appears or its count goes up.
+    var badgeEffect: BadgeEffect = .pulse
+    /// Keeps replaying the effect every few seconds while a badge is unread.
+    var repeatBadgeEffect = false
     /// Include notification titles and bodies in previews (needs Full Disk Access).
     var showMessageContent = true
     var hasCompletedOnboarding = false
@@ -100,6 +120,9 @@ struct GeneralSettings: Codable, Hashable {
         pollInterval = try c.decodeIfPresent(Double.self, forKey: .pollInterval) ?? d.pollInterval
         showHoverPreviews = try c.decodeIfPresent(Bool.self, forKey: .showHoverPreviews) ?? d.showHoverPreviews
         emptyBehavior = try c.decodeIfPresent(EmptyBehavior.self, forKey: .emptyBehavior) ?? d.emptyBehavior
+        hideWhenNotRunning = try c.decodeIfPresent(Bool.self, forKey: .hideWhenNotRunning) ?? d.hideWhenNotRunning
+        badgeEffect = try c.decodeIfPresent(BadgeEffect.self, forKey: .badgeEffect) ?? d.badgeEffect
+        repeatBadgeEffect = try c.decodeIfPresent(Bool.self, forKey: .repeatBadgeEffect) ?? d.repeatBadgeEffect
         showMessageContent = try c.decodeIfPresent(Bool.self, forKey: .showMessageContent) ?? d.showMessageContent
         hasCompletedOnboarding = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? d.hasCompletedOnboarding
     }
@@ -119,6 +142,7 @@ struct ClearedNotifications: Codable, Hashable {
 /// A page in the settings sidebar.
 enum SidebarItem: Hashable {
     case menuBar
+    case appearance
     case general
     case app(String)
     case group(UUID)

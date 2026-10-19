@@ -173,6 +173,15 @@ final class Store: ObservableObject {
         apps.filter { $0.groupID == group.id }
     }
 
+    /// Whether an icon belongs in the menu bar right now. A badge always shows; otherwise the
+    /// icon follows its "nothing new" setting and, if asked, hides while none of its apps is open.
+    func shouldShow(badge: Badge?, appearance: BadgeAppearance, bundleIDs: [String], running: Set<String>) -> Bool {
+        if badge != nil { return true }
+        if appearance.emptyBehavior == .hide { return false }
+        guard general.hideWhenNotRunning else { return true }
+        return bundleIDs.contains { running.contains($0.lowercased()) }
+    }
+
     func deleteGroup(_ id: UUID) {
         groups.removeAll { $0.id == id }
         for i in apps.indices where apps[i].groupID == id {
