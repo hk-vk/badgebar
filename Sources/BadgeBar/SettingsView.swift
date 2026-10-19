@@ -60,8 +60,6 @@ struct SettingsView: View {
             MenuBarPane(store: store, monitor: monitor, select: { router.selection = $0 }) {
                 router.addingApps = true
             }
-        case .appearance:
-            AppearancePane(store: store)
         case .general:
             GeneralPane(store: store, monitor: monitor, openGuide: openGuide)
         }
@@ -71,7 +69,6 @@ struct SettingsView: View {
     private var pageTitle: String {
         switch router.selection {
         case .menuBar, .none: "Menu Bar"
-        case .appearance: "Appearance"
         case .general: "General"
         case let .app(id): store.apps.first { $0.bundleID == id }?.name ?? "BadgeBar"
         case let .group(id): store.groups.first { $0.id == id }?.name ?? "Group"
@@ -120,13 +117,6 @@ private struct Sidebar: View {
                 SidebarSymbol(name: "menubar.rectangle", color: .brand)
             }
             .tag(SidebarItem.menuBar)
-
-            Label {
-                Text("Appearance")
-            } icon: {
-                SidebarSymbol(name: "paintbrush.fill", color: .blue)
-            }
-            .tag(SidebarItem.appearance)
 
             Label {
                 Text("General")
@@ -252,7 +242,7 @@ private struct Sidebar: View {
         switch item {
         case let .app(id): store.removeApp(id)
         case let .group(id): store.deleteGroup(id)
-        case .menuBar, .appearance, .general: return
+        case .menuBar, .general: return
         }
         let remaining = rowOrder
         if let index, !remaining.isEmpty {
@@ -263,7 +253,7 @@ private struct Sidebar: View {
     }
 
     private var rowOrder: [SidebarItem] {
-        var rows: [SidebarItem] = [.menuBar, .appearance, .general]
+        var rows: [SidebarItem] = [.menuBar, .general]
         rows += store.apps.filter { $0.groupID == nil }.map { .app($0.bundleID) }
         for group in store.groups {
             rows.append(.group(group.id))
@@ -360,7 +350,11 @@ private struct MenuBarPane: View {
         Form {
             Section {
                 if stripItems.isEmpty {
-                    Text("Nothing in the menu bar yet.").foregroundStyle(.secondary)
+                    ContentUnavailableView {
+                        Label("No Apps Yet", systemImage: "menubar.rectangle")
+                    } description: {
+                        Text("Add the apps whose unread counts you want to see, or drag apps here from Finder.")
+                    }
                 } else {
                     ReorderStrip(items: stripItems, move: move) { id in
                         if id.hasPrefix("app.") { select(.app(String(id.dropFirst(4)))) }
@@ -379,55 +373,37 @@ private struct MenuBarPane: View {
             } header: {
                 Text("Arrange")
             } footer: {
-                FooterNote("Drag icons left or right to arrange them; the menu bar follows. Faded icons are hidden right now.")
+                FooterNote("Drag icons to arrange them; the menu bar follows. Icons marked with a crossed-out eye aren't in the menu bar right now, because of the settings below.")
             }
 
             Section {
+                Picker("When an app has nothing new", selection: $store.general.emptyBehavior) {
+                    ForEach(EmptyBehavior.concrete) { Text($0.label).tag($0) }
+                }
                 Toggle(isOn: $store.general.hideWhenNotRunning) {
                     Text("Hide apps that aren't open")
-                    Text("An app's icon disappears when you quit it and comes back when you open it. Icons with a badge always show.")
+                    Text("An icon disappears when you quit its app and comes back when you open it.")
                 }
                 Toggle(isOn: $store.general.autoShowBadgedApps) {
-                    Text("Show other apps when they have notifications")
-                    Text("Apps you haven't added appear while they have a badge.")
-                }
-                Toggle(isOn: $store.general.showMainIcon) {
-                    Text("Show BadgeBar icon")
-                    Text("Otherwise, open BadgeBar again from Finder or Spotlight to get here.")
+                    Text("Show other apps while they have a badge")
+                    Text("Apps you haven't added appear until their badge clears.")
                 }
             } header: {
-                Text("Visibility")
+                Text("Showing Icons")
+            } footer: {
+                FooterNote("Icons with a badge always show. Apps and groups can override the first setting on their own pages.")
             }
 
             Section {
-                if store.apps.isEmpty && store.groups.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Apps Yet", systemImage: "menubar.rectangle")
-                    } description: {
-                        Text("Add the apps whose unread counts you want to see, or drag apps here from Finder.")
-                    }
+                LabeledContent("Animation") {
+                    EffectPicker(effect: $store.general.badgeEffect, icon: sampleIcon, appearance: sampleAppearance)
                 }
-                ForEach(store.apps.filter { $0.groupID == nil }) { app in
-                    row(.app(app.bundleID)) {
-                        AppIconView(bundleID: app.bundleID, size: 28)
-                    } title: {
-                        Text(app.name)
-                    } detail: {
-                        status(app.bundleID)
-                    }
-                }
-                ForEach(store.groups) { group in
-                    let members = store.members(of: group)
-                    row(.group(group.id)) {
-                        GroupIcon(group: group, size: 28)
-                    } title: {
-                        Text(group.name)
-                    } detail: {
-                        Text(members.isEmpty ? "No apps" : members.map(\.name).formatted(.list(type: .and)))
-                    }
-                }
+                Toggle("Keep animating until read", isOn: $store.general.repeatBadgeEffect)
+                    .disabled(store.general.badgeEffect == .off)
             } header: {
-                Text("In Your Menu Bar")
+                Text("New Badges")
+            } footer: {
+                FooterNote("A badge plays its effect briefly when it appears or its count goes up. Keep animating replays it every six seconds while it's unread. With Reduce Motion on, every effect becomes a gentle glow.")
             }
 
             let available = suggestions.filter { !store.isTracked($0.bundleID) }
@@ -501,38 +477,15 @@ private struct MenuBarPane: View {
         store.reorder(byKeys: order)
     }
 
-    private func status(_ bundleID: String) -> Text {
-        if let badge = store.visibleBadge(for: bundleID, monitor.badges[bundleID]) {
-            return Text(badge.count.map { "\($0) unread" } ?? "New activity")
-        }
-        return Text(AppIcons.isRunning(bundleID) ? "Nothing new" : "Not running")
+    /// The first app in the menu bar, so the animation previews look like the real thing.
+    private var sampleIcon: NSImage {
+        store.apps.first.map(AppIcons.menuBarIcon(for:)) ?? AppIcons.symbol("bubble.left.fill")
     }
 
-    /// A navigation row, like System Settings: tapping anywhere opens the item's page.
-    private func row(
-        _ item: SidebarItem,
-        @ViewBuilder icon: () -> some View,
-        @ViewBuilder title: () -> some View,
-        @ViewBuilder detail: () -> some View
-    ) -> some View {
-        Button {
-            select(item)
-        } label: {
-            HStack(spacing: 10) {
-                icon()
-                VStack(alignment: .leading, spacing: 0) {
-                    title()
-                    detail().font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+    private var sampleAppearance: BadgeAppearance {
+        store.apps.first?.appearance.resolved(store.general) ?? BadgeAppearance()
     }
+
 }
 
 // MARK: - App page
@@ -747,66 +700,6 @@ private struct GroupPane: View {
 
 // MARK: - General page
 
-/// How badges look and behave everywhere, unless an app or group overrides it.
-private struct AppearancePane: View {
-    @ObservedObject var store: Store
-
-    var body: some View {
-        Form {
-            Section {
-                LabeledContent("App icon") {
-                    AppIconPicker(choice: $store.general.appIcon)
-                }
-            } header: {
-                Text("BadgeBar")
-            } footer: {
-                FooterNote("Shown in the Dock and app switcher while a BadgeBar window is open. Automatic follows the icon style set in System Settings ▸ Appearance.")
-            }
-
-            Section {
-                Picker("When nothing is new", selection: $store.general.emptyBehavior) {
-                    ForEach(EmptyBehavior.concrete) { Text($0.label).tag($0) }
-                }
-            } header: {
-                Text("Menu Bar Icons")
-            } footer: {
-                FooterNote("Apps and groups can override this on their own pages.")
-            }
-
-            Section {
-                LabeledContent("New badges") {
-                    EffectPicker(effect: $store.general.badgeEffect, icon: sampleIcon, appearance: sampleAppearance)
-                }
-                Toggle("Keep animating until read", isOn: $store.general.repeatBadgeEffect)
-                    .disabled(store.general.badgeEffect == .off)
-            } header: {
-                Text("Animation")
-            } footer: {
-                FooterNote("A badge plays its effect briefly when it appears or its count goes up. Keep animating replays it every six seconds while it's unread. With Reduce Motion on, every effect becomes a gentle glow.")
-            }
-
-            Section {
-                Toggle("Show message text", isOn: $store.general.showMessageContent)
-            } header: {
-                Text("Previews")
-            } footer: {
-                FooterNote("Message text comes from Notification Center and needs Full Disk Access. It's read on your Mac and never leaves it.")
-            }
-        }
-        .formStyle(.grouped)
-        .navigationTitle("Appearance")
-    }
-
-    /// The first app in the menu bar, so the animation previews look like the real thing.
-    private var sampleIcon: NSImage {
-        store.apps.first.map(AppIcons.menuBarIcon(for:)) ?? AppIcons.symbol("bubble.left.fill")
-    }
-
-    private var sampleAppearance: BadgeAppearance {
-        store.apps.first?.appearance.resolved(store.general) ?? BadgeAppearance()
-    }
-}
-
 private struct GeneralPane: View {
     @ObservedObject var store: Store
     @ObservedObject var monitor: BadgeMonitor
@@ -841,8 +734,31 @@ private struct GeneralPane: View {
                     actionTitle: "Open Settings…",
                     action: Permissions.openFullDiskAccessSettings
                 )
+                Toggle("Show message text in previews", isOn: $store.general.showMessageContent)
+                    .disabled(!hasFullDiskAccess)
             } header: {
                 Text("Permissions")
+            } footer: {
+                FooterNote("Message text is read from Notification Center on your Mac and never leaves it.")
+            }
+
+            Section {
+                Toggle("Open at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
+                if let loginError {
+                    Text(loginError).font(.caption).foregroundStyle(.red)
+                }
+                Toggle(isOn: $store.general.showMainIcon) {
+                    Text("Show BadgeBar in the menu bar")
+                    Text("Otherwise, open BadgeBar from Finder or Spotlight to get back here.")
+                }
+                LabeledContent("App icon") {
+                    AppIconPicker(choice: $store.general.appIcon)
+                }
+            } header: {
+                Text("BadgeBar")
+            } footer: {
+                FooterNote("The app icon shows in the Dock while this window is open. Automatic follows System Settings ▸ Appearance.")
             }
 
             Section {
@@ -856,11 +772,6 @@ private struct GeneralPane: View {
             }
 
             Section("About") {
-                Toggle("Open at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
-                if let loginError {
-                    Text(loginError).font(.caption).foregroundStyle(.red)
-                }
                 LabeledContent("Welcome guide") {
                     Button("Show…", action: openGuide)
                         .nativeButton()

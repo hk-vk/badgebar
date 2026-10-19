@@ -160,7 +160,6 @@ struct ClearedNotifications: Codable, Hashable {
 /// A page in the settings sidebar.
 enum SidebarItem: Hashable {
     case menuBar
-    case appearance
     case general
     case app(String)
     case group(UUID)

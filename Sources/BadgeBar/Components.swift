@@ -410,8 +410,13 @@ struct ReorderStrip: View {
     private static let scale: CGFloat = 1.5
     private static let spacing: CGFloat = 6
 
+    /// Every tile is the same size, so the strip reads as one row of equal items.
     private var tileWidth: CGFloat {
-        max(64, (items.map(\.image.size.width).max() ?? 16) * Self.scale + 16)
+        max(80, (items.map(\.image.size.width).max() ?? 16) * Self.scale + 24)
+    }
+
+    private var iconHeight: CGFloat {
+        (items.map(\.image.size.height).max() ?? 16) * Self.scale
     }
 
     private var slot: CGFloat { tileWidth + Self.spacing }
@@ -432,30 +437,44 @@ struct ReorderStrip: View {
 
     private func tile(_ item: Item, index: Int) -> some View {
         let isDragging = dragging == item.id
-        return VStack(spacing: 4) {
+        return VStack(spacing: 6) {
             Image(nsImage: item.image)
                 .resizable()
                 .interpolation(.high)
                 .frame(width: item.image.size.width * Self.scale, height: item.image.size.height * Self.scale)
-                .opacity(item.hidden ? 0.4 : 1)
+                // Not in the menu bar right now: shown as a ghost of itself.
+                .opacity(item.hidden ? 0.3 : 1)
+                .frame(height: iconHeight)
             Text(item.name)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(item.hidden ? .tertiary : .secondary)
                 .lineLimit(1)
-                .truncationMode(.tail)
+                .truncationMode(.middle)
+                .padding(.horizontal, 6)
         }
-        .frame(width: tileWidth, height: 64)
+        .frame(width: tileWidth, height: iconHeight + 40)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isDragging ? AnyShapeStyle(Color(nsColor: .controlBackgroundColor)) : AnyShapeStyle(Color.primary.opacity(0.045)))
                 .shadow(color: .black.opacity(isDragging ? 0.25 : 0), radius: 8, y: 3)
-                .opacity(isDragging ? 1 : 0)
         )
+        // Hidden items carry a neutral marker where a badge would be. They never have a
+        // badge themselves: anything with a badge always shows.
+        .overlay(alignment: .topTrailing) {
+            if item.hidden {
+                Image(systemName: "eye.slash.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .background(Circle().fill(.background).shadow(color: .black.opacity(0.15), radius: 1, y: 0.5))
+                    .padding(5)
+            }
+        }
         .scaleEffect(isDragging ? 1.06 : 1)
         .offset(x: offset(for: index, item: item))
         .zIndex(isDragging ? 1 : 0)
         .contentShape(Rectangle())
-        .help(item.hidden ? "\(item.name) · hidden right now" : item.name)
+        .help(item.hidden ? "\(item.name) isn't in the menu bar right now" : item.name)
         .onHover { inside in
             if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
         }
