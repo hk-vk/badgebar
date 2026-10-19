@@ -318,15 +318,26 @@ private struct GroupIcon: View {
 
     var body: some View {
         if group.customIconPath != nil {
-            Image(nsImage: AppIcons.menuBarIcon(for: group))
-                .resizable()
-                .scaledToFit()
-                .padding(size * 0.12)
-                .frame(width: size, height: size)
-                .background(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).fill(.quaternary))
+            CustomIconTile(image: AppIcons.menuBarIcon(for: group), size: size)
         } else {
             SidebarSymbol(name: group.symbol, color: .gray, size: size)
         }
+    }
+}
+
+/// A custom symbol or image on a soft squircle, for icons that aren't an app's own.
+private struct CustomIconTile: View {
+    let image: NSImage
+    let size: CGFloat
+
+    var body: some View {
+        Image(nsImage: image)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(.primary)
+            .padding(size * (image.isTemplate ? 0.24 : 0.12))
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).fill(.quaternary))
     }
 }
 
@@ -538,7 +549,13 @@ private struct AppPane: View {
         Form {
             Section {
                 PaneHeader(subtitle: status) {
-                    AppIconView(bundleID: app.bundleID, size: 52)
+                    EditableIcon(selection: customIcon) {
+                        if app.iconStyle == .custom, app.customSymbol != nil || app.customIconPath != nil {
+                            CustomIconTile(image: AppIcons.menuBarIcon(for: app), size: 52)
+                        } else {
+                            AppIconView(bundleID: app.bundleID, size: 52)
+                        }
+                    }
                 } title: {
                     Text(app.name)
                 } trailing: {
@@ -559,14 +576,8 @@ private struct AppPane: View {
                     ForEach(IconStyle.allCases) { Text($0.label).tag($0) }
                 }
                 if app.iconStyle == .custom {
-                    LabeledContent("Image") {
-                        HStack(spacing: 8) {
-                            Text(app.customIconPath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "None")
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Button("Choose…", action: chooseIcon)
-                                .nativeButton()
-                        }
+                    LabeledContent("Custom Icon") {
+                        IconWell(image: AppIcons.menuBarIcon(for: app), selection: customIcon)
                     }
                 }
             }
@@ -603,13 +614,22 @@ private struct AppPane: View {
         return "Running · \(count) unread"
     }
 
-    private func chooseIcon() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
-        guard panel.runModal() == .OK, let url = panel.url,
-              let copy = AppIcons.importCustomIcon(from: url) else { return }
-        AppIcons.removeCustomIcon(app.customIconPath)
-        app.customIconPath = copy
+    /// The app's own symbol or image. Removing it goes back to the app's icon.
+    private var customIcon: Binding<CustomIcon?> {
+        Binding(
+            get: { app.customSymbol.map(CustomIcon.symbol) ?? app.customIconPath.map { .image(path: $0) } },
+            set: { icon in
+                if case let .image(path) = icon, path == app.customIconPath { return }
+                AppIcons.removeCustomIcon(app.customIconPath)
+                app.customIconPath = nil
+                app.customSymbol = nil
+                switch icon {
+                case let .symbol(name): app.customSymbol = name; app.iconStyle = .custom
+                case let .image(path): app.customIconPath = path; app.iconStyle = .custom
+                case nil: app.iconStyle = .original
+                }
+            }
+        )
     }
 }
 
@@ -623,44 +643,32 @@ private struct GroupPane: View {
 
     @State private var confirmingRemoval = false
 
-    private static let symbols: [(name: String, title: String)] = [
-        ("tray.full.fill", "Inbox"), ("bubble.left.and.bubble.right.fill", "Chats"),
-        ("message.fill", "Message"), ("envelope.fill", "Mail"), ("bell.fill", "Bell"),
-        ("person.2.fill", "People"), ("briefcase.fill", "Work"), ("house.fill", "Home"),
-        ("star.fill", "Star"), ("phone.fill", "Phone"), ("megaphone.fill", "Announcements"),
-        ("gamecontroller.fill", "Games"),
-    ]
-
-    /// Choosing "Custom image" asks for the image right away; going back to "Symbol" drops it.
-    private var usesCustomImage: Binding<Bool> {
+    /// The group's symbol, or its image when it has one. Removing the image goes back to
+    /// the symbol.
+    private var icon: Binding<CustomIcon?> {
         Binding(
-            get: { group.customIconPath != nil },
-            set: { custom in
-                if custom {
-                    chooseImage()
-                } else {
-                    AppIcons.removeCustomIcon(group.customIconPath)
-                    group.customIconPath = nil
+            get: { group.customIconPath.map { .image(path: $0) } ?? .symbol(group.symbol) },
+            set: { icon in
+                if case let .image(path) = icon, path == group.customIconPath { return }
+                AppIcons.removeCustomIcon(group.customIconPath)
+                group.customIconPath = nil
+                switch icon {
+                case let .symbol(name): group.symbol = name
+                case let .image(path): group.customIconPath = path
+                case nil: break
                 }
             }
         )
-    }
-
-    private func chooseImage() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
-        guard panel.runModal() == .OK, let url = panel.url,
-              let copy = AppIcons.importCustomIcon(from: url) else { return }
-        AppIcons.removeCustomIcon(group.customIconPath)
-        group.customIconPath = copy
     }
 
     var body: some View {
         Form {
             Section {
                 PaneHeader(subtitle: memberSummary) {
-                    // Same squircle as the sidebar, at header size.
-                    GroupIcon(group: group, size: 52)
+                    // Same squircle as the sidebar, at header size. Click to change it.
+                    EditableIcon(selection: icon, apps: store.members(of: group).map(\.bundleID)) {
+                        GroupIcon(group: group, size: 52)
+                    }
                 } title: {
                     TextField("Group Name", text: $group.name, prompt: Text("Group Name"))
                         .textFieldStyle(.plain)
@@ -694,26 +702,12 @@ private struct GroupPane: View {
             }
 
             Section("Appearance") {
-                Picker("Icon", selection: usesCustomImage) {
-                    Text("Symbol").tag(false)
-                    Text("Custom image").tag(true)
-                }
-                if let path = group.customIconPath {
-                    LabeledContent("Image") {
-                        HStack(spacing: 8) {
-                            Image(nsImage: AppIcons.menuBarIcon(for: group))
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 18, height: 18)
-                                .help(URL(fileURLWithPath: path).lastPathComponent)
-                            Button("Choose…", action: chooseImage)
-                                .nativeButton()
-                        }
-                    }
-                } else {
-                    Picker("Symbol", selection: $group.symbol) {
-                        ForEach(Self.symbols, id: \.name) { Label($0.title, systemImage: $0.name).tag($0.name) }
-                    }
+                LabeledContent("Icon") {
+                    IconWell(
+                        image: AppIcons.menuBarIcon(for: group),
+                        selection: icon,
+                        apps: store.members(of: group).map(\.bundleID)
+                    )
                 }
                 LabeledContent("Style") {
                     StylePicker(appearance: $group.appearance, icon: AppIcons.menuBarIcon(for: group))
