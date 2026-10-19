@@ -68,6 +68,39 @@ struct GeneralSettings: Codable, Hashable {
     var autoShowBadgedApps = true
     var showMainIcon = true
     var pollInterval: Double = 1.5
+    var showHoverPreviews = true
+    /// Include notification titles and bodies in previews (needs Full Disk Access).
+    var showMessageContent = true
+    var hasCompletedOnboarding = false
+
+    init() {}
+
+    // Decode field by field so settings saved by older versions keep working.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = GeneralSettings()
+        autoShowBadgedApps = try c.decodeIfPresent(Bool.self, forKey: .autoShowBadgedApps) ?? d.autoShowBadgedApps
+        showMainIcon = try c.decodeIfPresent(Bool.self, forKey: .showMainIcon) ?? d.showMainIcon
+        pollInterval = try c.decodeIfPresent(Double.self, forKey: .pollInterval) ?? d.pollInterval
+        showHoverPreviews = try c.decodeIfPresent(Bool.self, forKey: .showHoverPreviews) ?? d.showHoverPreviews
+        showMessageContent = try c.decodeIfPresent(Bool.self, forKey: .showMessageContent) ?? d.showMessageContent
+        hasCompletedOnboarding = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? d.hasCompletedOnboarding
+    }
+}
+
+/// Notifications the user has cleared from BadgeBar's viewer.
+struct ClearedNotifications: Codable, Hashable {
+    /// Per lowercased bundle ID: hide everything delivered at or before this date.
+    var before: [String: Date] = [:]
+    /// Individually dismissed notification record IDs.
+    var ids: Set<Int64> = []
+}
+
+/// A page in the settings sidebar.
+enum SidebarItem: Hashable {
+    case general
+    case app(String)
+    case group(UUID)
 }
 
 /// A badge as read from the Dock. `count` is nil for non-numeric badges like "•" or "!".
