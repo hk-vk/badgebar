@@ -19,20 +19,25 @@ struct ViewerModel {
 
     let scope: Scope
     let title: String
-    let badge: Badge?
     let apps: [AppNotifications]
     let canReadNotifications: Bool
     let showsContent: Bool
+    /// History: also lists notifications already marked as read.
+    var includesRead = false
 }
 
 /// A Notification Center–style viewer used for hover previews, groups, and the all-apps list.
 struct NotificationViewer: View {
     let model: ViewerModel
     @ObservedObject var store: Store
+    var markRead: ([String]) -> Void
     var openSettings: () -> Void
 
     @Environment(\.closePreview) private var close
     @State private var expanded: Set<String> = []
+    @State private var showAll = false
+
+    private static let initialCount = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -47,18 +52,31 @@ struct NotificationViewer: View {
         .padding(14)
         .frame(width: 360, alignment: .leading)
         .tint(.brand)
-        .animation(.spring(duration: 0.35, bounce: 0.12), value: expanded)
-        .animation(.spring(duration: 0.35, bounce: 0.12), value: store.cleared)
+        .focusEffectDisabled()
+        .motionAware(.ui, value: expanded)
+        .motionAware(.ui, value: showAll)
+        .motionAware(.ui, value: store.cleared)
     }
 
     private var showContent: Bool { model.canReadNotifications && model.showsContent }
 
     private func visible(_ app: AppNotifications) -> [DeliveredNotification] {
-        showContent ? app.notifications.filter(store.isVisible) : []
+        guard showContent else { return [] }
+        if model.includesRead { return app.notifications.filter { !store.cleared.ids.contains($0.id) } }
+        return app.notifications.filter(store.isVisible)
     }
 
-    private var hasVisibleNotifications: Bool {
-        model.apps.contains { !visible($0).isEmpty }
+    /// The app's badge unless the user has marked it as read.
+    private func badge(for app: AppNotifications) -> Badge? {
+        store.visibleBadge(for: app.bundleID, app.badge)
+    }
+
+    private var totalBadge: Badge? {
+        Badge.combine(model.apps.compactMap(badge(for:)))
+    }
+
+    private var hasUnread: Bool {
+        model.apps.contains { !visible($0).isEmpty || badge(for: $0) != nil }
     }
 
     // MARK: Header
@@ -70,9 +88,10 @@ struct NotificationViewer: View {
                 AppIconView(bundleID: bundleID, size: 30)
             case let .group(symbol):
                 Image(systemName: symbol)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.title2)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.tint)
                     .frame(width: 30, height: 30)
-                    .glassSurface(cornerRadius: 9)
             case .all:
                 EmptyView()
             }
@@ -87,34 +106,40 @@ struct NotificationViewer: View {
             }
             Spacer(minLength: 8)
 
-            if hasVisibleNotifications {
-                Button(model.scope.isAll ? "Clear All" : "Clear") {
-                    store.clear(model.apps.map(\.bundleID))
+            HStack(spacing: 6) {
+                if hasUnread {
+                    Button {
+                        markRead(model.apps.map(\.bundleID))
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .nativeButton(shape: .circle)
+                    .help(model.scope.isAll ? "Mark All as Read" : "Mark as Read")
+                    .accessibilityLabel(model.scope.isAll ? "Mark All as Read" : "Mark as Read")
                 }
-                .nativeButton()
-                .controlSize(.small)
-            }
 
-            if case let .app(bundleID) = model.scope {
-                Button("Open") { open(bundleID) }
-                    .nativeButton(prominent: true)
-                    .controlSize(.small)
-            } else {
-                Button {
-                    close()
-                    openSettings()
-                } label: {
-                    Image(systemName: "gearshape")
+                if case let .app(bundleID) = model.scope {
+                    Button("Open") { open(bundleID) }
+                        .nativeButton(prominent: true)
+                } else {
+                    Button {
+                        close()
+                        openSettings()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .nativeButton(shape: .circle)
+                    .help("Settings")
+                    .accessibilityLabel("Settings")
                 }
-                .buttonStyle(.borderless)
-                .help("Settings")
             }
+            .controlSize(.small)
         }
     }
 
     private var summary: String {
         if case let .app(bundleID) = model.scope, !AppIcons.isRunning(bundleID) { return "Not running" }
-        guard let badge = model.badge else {
+        guard let badge = totalBadge else {
             return model.scope.isAll ? "You're all caught up" : "No new notifications"
         }
         guard let count = badge.count else { return "New activity" }
@@ -132,20 +157,29 @@ struct NotificationViewer: View {
                 if notes.isEmpty {
                     EmptyState(text: showContent ? "No recent notifications" : "Open the app to read new messages.")
                 } else {
-                    VStack(spacing: 8) {
-                        ForEach(Array(notes.prefix(5).enumerated()), id: \.element.id) { index, note in
-                            card(note, app: app, unread: index < (app.badge?.count ?? 0), showIcon: false)
+                    let shown = showAll ? notes : Array(notes.prefix(Self.initialCount))
+                    FittedScrollView(maxHeight: 480) {
+                        VStack(spacing: 8) {
+                            ForEach(Array(shown.enumerated()), id: \.element.id) { index, note in
+                                card(note, app: app, unread: index < (badge(for: app)?.count ?? 0), showIcon: false)
+                            }
                         }
-                        if notes.count > 5 {
-                            Text("\(notes.count - 5) more in Notification Center")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                    }
+                    if !showAll && notes.count > Self.initialCount {
+                        Button("Show \(notes.count - Self.initialCount) More") { showAll = true }
+                            .nativeButton()
+                            .controlSize(.small)
+                            .frame(maxWidth: .infinity)
+                    } else if let hidden = hiddenUnread(app, shown: shown.count) {
+                        Button(hidden) { open(app.bundleID) }
+                            .buttonStyle(.link)
+                            .font(.caption)
+                            .frame(maxWidth: .infinity)
                     }
                 }
             }
         case .group, .all:
-            let apps = model.apps.filter { $0.badge != nil || !visible($0).isEmpty || !model.scope.isAll }
+            let apps = model.apps.filter { badge(for: $0) != nil || !visible($0).isEmpty || !model.scope.isAll }
             if apps.isEmpty {
                 EmptyState(text: "No notifications", symbol: "bell.slash")
             } else {
@@ -169,15 +203,17 @@ struct NotificationViewer: View {
             HStack(spacing: 6) {
                 Text(app.name)
                     .font(.subheadline.weight(.semibold))
-                if let badge = app.badge { CountPill(badge: badge) }
+                if let badge = badge(for: app) { CountPill(badge: badge) }
                 Spacer()
                 if notes.count > 1 {
                     Button(isExpanded ? "Show Less" : "\(notes.count - 1) More") { toggle(app.bundleID) }
-                        .buttonStyle(.borderless)
+                        .nativeButton()
+                        .controlSize(.small)
                         .font(.caption.weight(.medium))
                 }
-                if !notes.isEmpty {
-                    ClearButton { store.clear([app.bundleID]) }
+                if !notes.isEmpty || badge(for: app) != nil {
+                    ClearButton { markRead([app.bundleID]) }
+                        .help("Mark \(app.name) as read")
                 }
             }
             .padding(.horizontal, 4)
@@ -198,12 +234,12 @@ struct NotificationViewer: View {
                 .buttonStyle(.plain)
             } else if isExpanded {
                 ForEach(Array(notes.prefix(8).enumerated()), id: \.element.id) { index, note in
-                    card(note, app: app, unread: index < (app.badge?.count ?? 0), showIcon: true)
+                    card(note, app: app, unread: index < (badge(for: app)?.count ?? 0), showIcon: true)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             } else {
                 StackedCard(depth: min(notes.count - 1, 2)) {
-                    card(notes[0], app: app, unread: (app.badge?.count ?? 0) > 0, showIcon: true) {
+                    card(notes[0], app: app, unread: (badge(for: app)?.count ?? 0) > 0, showIcon: true) {
                         if notes.count > 1 { toggle(app.bundleID) } else { open(app.bundleID) }
                     }
                 }
@@ -225,6 +261,15 @@ struct NotificationViewer: View {
             onTap: onTap ?? { open(app.bundleID) },
             onDismiss: { store.dismiss(note) }
         )
+    }
+
+    /// When the badge counts more than the cards shown (Notification Center doesn't keep every
+    /// message), say so, so the count and the list never disagree.
+    private func hiddenUnread(_ app: AppNotifications, shown: Int) -> String? {
+        let unread = badge(for: app)?.count ?? 0
+        let extra = max(unread - shown, visible(app).count - shown, 0)
+        guard extra > 0 else { return nil }
+        return "\(extra) more unread — open \(app.name) to read \(extra == 1 ? "it" : "them")"
     }
 
     private func toggle(_ bundleID: String) {
@@ -299,9 +344,9 @@ struct NotificationCard: View {
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .cardBackground(highlighted: hovering)
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableStyle())
         // Like Notification Center: a close button appears on the corner while hovering.
         .overlay(alignment: .topLeading) {
             if hovering {
@@ -311,7 +356,7 @@ struct NotificationCard: View {
             }
         }
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .animation(.feedback, value: hovering)
     }
 
     /// "now", "5m", "2h", then the time or date, as Notification Center shows it.
@@ -337,8 +382,8 @@ private struct StackedCard<Content: View>: View {
                     ForEach((1...max(depth, 1)).reversed(), id: \.self) { level in
                         if level <= depth {
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(.regularMaterial)
-                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.primary.opacity(0.06)))
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.hairline.opacity(0.6), lineWidth: 0.5))
                                 .frame(height: 20)
                                 .padding(.horizontal, CGFloat(level) * 10)
                                 .offset(y: CGFloat(level) * 6)
@@ -371,19 +416,20 @@ private struct ClearButton: View {
 }
 
 private extension View {
+    /// Notification cards are opaque so stacked cards don't show through each other.
     func cardBackground(highlighted: Bool = false) -> some View {
         background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.regularMaterial)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.primary.opacity(highlighted ? 0.05 : 0))
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.primary.opacity(highlighted ? 0.04 : 0))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.07))
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.hairline.opacity(0.6), lineWidth: 0.5)
                 )
-                .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
+                .shadow(color: .black.opacity(0.05), radius: 1.5, y: 1)
         )
     }
 }
@@ -427,7 +473,7 @@ private struct FullDiskAccessCard: View {
             }
         }
         .padding(12)
-        .glassSurface(cornerRadius: 14)
+        .contentCard()
     }
 }
 
@@ -461,7 +507,7 @@ struct CountPill: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 5)
             .frame(minWidth: 16, minHeight: 16)
-            .background(Capsule().fill(color))
+            .background(Capsule().fill(badge.count == nil ? Color.secondary : color))
             .contentTransition(.numericText())
     }
 }

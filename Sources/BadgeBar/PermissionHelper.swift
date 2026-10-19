@@ -134,15 +134,12 @@ private struct HelperView: View {
     let kind: PermissionHelper.Kind
     let close: () -> Void
 
-    @State private var nudge = false
-
     var body: some View {
         HStack(spacing: 14) {
             VStack(spacing: 4) {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 48, height: 48)
-                    .offset(y: nudge ? -3 : 0)
                     .onDrag { NSItemProvider(object: Bundle.main.bundleURL as NSURL) }
                     .help("Drag into the list in System Settings")
                 Text("BadgeBar").font(.caption2.weight(.medium))
@@ -172,9 +169,6 @@ private struct HelperView: View {
         .padding(.vertical, 12)
         .glassSurface(cornerRadius: 20)
         .padding(10)
-        .onAppear {
-            // A gentle bob draws the eye to the icon that needs dragging.
-            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { nudge = true }
-        }
+
     }
 }

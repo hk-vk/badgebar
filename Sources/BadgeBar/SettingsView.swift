@@ -6,7 +6,8 @@ import UniformTypeIdentifiers
 /// Which settings page is showing. Shared so the menu bar can deep-link into a page.
 @MainActor
 final class SettingsRouter: ObservableObject {
-    @Published var selection: SidebarItem? = .general
+    @Published var selection: SidebarItem? = .menuBar
+    @Published var addingApps = false
 }
 
 struct SettingsView: View {
@@ -17,14 +18,19 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView {
-            Sidebar(store: store, monitor: monitor, selection: $router.selection)
+            Sidebar(store: store, monitor: monitor, selection: $router.selection, addingApps: $router.addingApps)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 300)
         } detail: {
             detail
                 .frame(minWidth: 460)
         }
         .frame(minWidth: 720, minHeight: 520)
-        .tint(.brand)
+        .background(WindowTitle(title: pageTitle))
+        .sheet(isPresented: $router.addingApps) {
+            AddAppsSheet(store: store, monitor: monitor) { added in
+                if let added { router.selection = .app(added) }
+            }
+        }
     }
 
     @ViewBuilder
@@ -34,7 +40,7 @@ struct SettingsView: View {
             if let binding = appBinding(id) {
                 AppPane(app: binding, store: store, monitor: monitor) {
                     store.apps.removeAll { $0.bundleID == id }
-                    router.selection = .general
+                    router.selection = .menuBar
                 }
                 .id(id)
             } else {
@@ -44,14 +50,28 @@ struct SettingsView: View {
             if let binding = groupBinding(id) {
                 GroupPane(group: binding, store: store, monitor: monitor) {
                     store.deleteGroup(id)
-                    router.selection = .general
+                    router.selection = .menuBar
                 }
                 .id(id)
             } else {
                 placeholder
             }
-        case .general, .none:
+        case .menuBar, .none:
+            MenuBarPane(store: store, monitor: monitor, select: { router.selection = $0 }) {
+                router.addingApps = true
+            }
+        case .general:
             GeneralPane(store: store, monitor: monitor, openGuide: openGuide)
+        }
+    }
+
+    /// The page name, shown in the window's toolbar like System Settings.
+    private var pageTitle: String {
+        switch router.selection {
+        case .menuBar, .none: "Menu Bar"
+        case .general: "General"
+        case let .app(id): store.apps.first { $0.bundleID == id }?.name ?? "BadgeBar"
+        case let .group(id): store.groups.first { $0.id == id }?.name ?? "Group"
         }
     }
 
@@ -87,9 +107,17 @@ private struct Sidebar: View {
     @ObservedObject var store: Store
     @ObservedObject var monitor: BadgeMonitor
     @Binding var selection: SidebarItem?
+    @Binding var addingApps: Bool
 
     var body: some View {
         List(selection: $selection) {
+            Label {
+                Text("Menu Bar")
+            } icon: {
+                SidebarSymbol(name: "menubar.rectangle", color: .brand)
+            }
+            .tag(SidebarItem.menuBar)
+
             Label {
                 Text("General")
             } icon: {
@@ -97,21 +125,17 @@ private struct Sidebar: View {
             }
             .tag(SidebarItem.general)
 
-            Section("Menu Bar Apps") {
+            Section("Apps") {
                 ForEach(store.apps.filter { $0.groupID == nil }) { app in
                     appRow(app)
                 }
                 .onMove(perform: moveUngrouped)
 
-                if store.apps.isEmpty {
-                    Text("No apps yet")
-                        .foregroundStyle(.tertiary)
-                        .selectionDisabled()
-                }
+                addRow("Add Apps…") { addingApps = true }
             }
 
-            ForEach(store.groups) { group in
-                Section {
+            Section("Groups") {
+                ForEach(store.groups) { group in
                     Label {
                         HStack {
                             Text(group.name)
@@ -119,7 +143,7 @@ private struct Sidebar: View {
                             badgeLabel(Badge.combine(store.members(of: group).compactMap { monitor.badges[$0.bundleID] }))
                         }
                     } icon: {
-                        SidebarSymbol(name: group.symbol, color: Color(nsColor: NSColor(hex: group.appearance.colorHex) ?? .systemBlue))
+                        SidebarSymbol(name: group.symbol, color: .gray)
                     }
                     .tag(SidebarItem.group(group.id))
                     .contextMenu { groupMenu(group) }
@@ -127,14 +151,36 @@ private struct Sidebar: View {
                     ForEach(store.members(of: group)) { app in
                         appRow(app).padding(.leading, 12)
                     }
-                } header: {
-                    Text("Group")
+                }
+
+                addRow("New Group") {
+                    selection = .group(store.addGroup().id)
                 }
             }
         }
         .listStyle(.sidebar)
         .onDeleteCommand(perform: deleteSelection)
-        .safeAreaInset(edge: .bottom) { bottomBar }
+        .acceptsDroppedApps(into: store) { added in
+            if let added { selection = .app(added) }
+        }
+    }
+
+    /// An always-visible action row, so adding things never hides behind a small + button.
+    private func addRow(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label {
+                Text(title)
+            } icon: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 20, height: 20)
+            }
+            .foregroundStyle(Color.accentColor)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .selectionDisabled()
     }
 
     private func appRow(_ app: TrackedApp) -> some View {
@@ -177,58 +223,6 @@ private struct Sidebar: View {
         Button("Delete Group", role: .destructive) { remove(.group(group.id)) }
     }
 
-    private var bottomBar: some View {
-        HStack(spacing: 4) {
-            Menu {
-                let candidates = monitor.entries.filter { !store.isTracked($0.bundleID) }
-                Section("Apps in the Dock") {
-                    if candidates.isEmpty {
-                        Text(monitor.isTrusted ? "All Dock apps added" : "Needs Accessibility access")
-                    }
-                    ForEach(candidates, id: \.bundleID) { entry in
-                        Button {
-                            store.track(bundleID: entry.bundleID, name: entry.name)
-                            selection = .app(entry.bundleID)
-                        } label: {
-                            Label {
-                                Text(entry.badge.map { "\(entry.name)  (\($0.label))" } ?? entry.name)
-                            } icon: {
-                                Image(nsImage: AppIcons.icon(for: entry.bundleID))
-                            }
-                        }
-                    }
-                }
-                Button("Other Application…", action: chooseApplication)
-                Divider()
-                Button("New Group") {
-                    let group = AppGroup(name: "New Group")
-                    store.groups.append(group)
-                    selection = .group(group.id)
-                }
-            } label: {
-                Label("Add", systemImage: "plus")
-            }
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Add an app or group")
-
-            Button {
-                deleteSelection()
-            } label: {
-                Label("Remove", systemImage: "minus")
-            }
-            .disabled(!canDelete)
-            .help("Remove the selected item")
-
-            Spacer()
-        }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .controlSize(.large)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
     private var canDelete: Bool {
         switch selection {
         case .app, .group: return true
@@ -248,18 +242,18 @@ private struct Sidebar: View {
         switch item {
         case let .app(id): store.apps.removeAll { $0.bundleID == id }
         case let .group(id): store.deleteGroup(id)
-        case .general: return
+        case .menuBar, .general: return
         }
         let remaining = rowOrder
         if let index, !remaining.isEmpty {
             selection = remaining[min(index, remaining.count - 1)]
         } else {
-            selection = .general
+            selection = .menuBar
         }
     }
 
     private var rowOrder: [SidebarItem] {
-        var rows: [SidebarItem] = [.general]
+        var rows: [SidebarItem] = [.menuBar, .general]
         rows += store.apps.filter { $0.groupID == nil }.map { .app($0.bundleID) }
         for group in store.groups {
             rows.append(.group(group.id))
@@ -279,20 +273,16 @@ private struct Sidebar: View {
         ungrouped.move(fromOffsets: source, toOffset: destination)
         store.apps = ungrouped + store.apps.filter { $0.groupID != nil }
     }
+}
 
-    private func chooseApplication() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.application]
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.allowsMultipleSelection = true
-        panel.prompt = "Add"
-        guard panel.runModal() == .OK else { return }
-        for url in panel.urls {
-            guard let id = Bundle(url: url)?.bundleIdentifier else { continue }
-            let name = url.deletingPathExtension().lastPathComponent
-            store.track(bundleID: id, name: name)
-            selection = .app(id)
-        }
+/// Picker options for an app's nothing-new rule, spelling out what "Use Default" means.
+private struct EmptyBehaviorOptions: View {
+    let global: EmptyBehavior
+
+    var body: some View {
+        Text("Use Default (\(global.label))").tag(EmptyBehavior.useDefault)
+        Divider()
+        ForEach(EmptyBehavior.concrete) { Text($0.label).tag($0) }
     }
 }
 
@@ -300,13 +290,183 @@ private struct Sidebar: View {
 private struct SidebarSymbol: View {
     let name: String
     let color: Color
+    var size: CGFloat = 20
 
     var body: some View {
         Image(systemName: name)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: size * 0.55, weight: .semibold))
             .foregroundStyle(.white)
-            .frame(width: 20, height: 20)
-            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(color.gradient))
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).fill(color.gradient))
+    }
+}
+
+// MARK: - Menu Bar page
+
+/// The landing page: what's in the menu bar now, and the quickest ways to add more.
+private struct MenuBarPane: View {
+    @ObservedObject var store: Store
+    @ObservedObject var monitor: BadgeMonitor
+    let select: (SidebarItem) -> Void
+    let addApps: () -> Void
+
+    /// Looked up once; scanning installed apps on every redraw would be wasteful.
+    @State private var suggestions: [AppInfo] = []
+
+    var body: some View {
+        Form {
+            Section {
+                if stripItems.isEmpty {
+                    Text("Nothing in the menu bar yet.").foregroundStyle(.secondary)
+                } else {
+                    ReorderStrip(items: stripItems, move: move) { id in
+                        if id.hasPrefix("app.") { select(.app(String(id.dropFirst(4)))) }
+                        if id.hasPrefix("group."), let uuid = UUID(uuidString: String(id.dropFirst(6))) { select(.group(uuid)) }
+                    }
+                }
+                HStack(spacing: 8) {
+                    Spacer()
+                    Button("New Group") { select(.group(store.addGroup().id)) }
+                        .nativeButton()
+                    Button(action: addApps) {
+                        Label("Add Apps…", systemImage: "plus")
+                    }
+                    .nativeButton(prominent: true)
+                }
+            } header: {
+                Text("Arrange")
+            } footer: {
+                FooterNote("Drag icons left or right to arrange them; the menu bar follows. You can also hold ⌘ and drag icons in the menu bar itself.")
+            }
+
+            Section {
+                if store.apps.isEmpty && store.groups.isEmpty {
+                    ContentUnavailableView {
+                        Label("No Apps Yet", systemImage: "menubar.rectangle")
+                    } description: {
+                        Text("Add the apps whose unread counts you want to see, or drag apps here from Finder.")
+                    }
+                }
+                ForEach(store.apps.filter { $0.groupID == nil }) { app in
+                    row(.app(app.bundleID)) {
+                        AppIconView(bundleID: app.bundleID, size: 28)
+                    } title: {
+                        Text(app.name)
+                    } detail: {
+                        status(app.bundleID)
+                    }
+                }
+                ForEach(store.groups) { group in
+                    let members = store.members(of: group)
+                    row(.group(group.id)) {
+                        SidebarSymbol(name: group.symbol, color: .gray, size: 28)
+                    } title: {
+                        Text(group.name)
+                    } detail: {
+                        Text(members.isEmpty ? "No apps" : members.map(\.name).formatted(.list(type: .and)))
+                    }
+                }
+            } header: {
+                Text("In Your Menu Bar")
+            }
+
+            let available = suggestions.filter { !store.isTracked($0.bundleID) }
+            if !available.isEmpty {
+                Section {
+                    ForEach(available) { app in
+                        HStack(spacing: 10) {
+                            AppIconView(bundleID: app.bundleID, size: 28)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(app.name)
+                                if let category = app.category {
+                                    Text(category.rawValue).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            if let badge = monitor.badges[app.bundleID] { CountPill(badge: badge) }
+                            Button("Add") {
+                                store.track(bundleID: app.bundleID, name: app.name)
+                            }
+                            .nativeButton()
+                            .accessibilityLabel("Add \(app.name)")
+                        }
+                    }
+                } header: {
+                    Text("Suggested Apps")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Menu Bar")
+        .acceptsDroppedApps(into: store) { _ in }
+        .onAppear {
+            suggestions = AppCatalog.suggestions().filter { $0.category != .apple }
+        }
+    }
+
+    /// Every app and group in menu bar order, drawn the way the menu bar draws them.
+    private var stripItems: [ReorderStrip.Item] {
+        let badges = store.visibleBadges(monitor.badges)
+        let apps = store.apps.filter { $0.groupID == nil }.map { app in
+            let appearance = app.appearance.resolved(store.general)
+            let badge = badges[app.bundleID]
+            return ReorderStrip.Item(
+                id: "app.\(app.bundleID)",
+                name: app.name,
+                image: BadgeRenderer.image(icon: AppIcons.menuBarIcon(for: app), badge: badge, appearance: appearance),
+                hidden: badge == nil && appearance.emptyBehavior == .hide
+            )
+        }
+        let groups = store.groups.map { group in
+            let appearance = group.appearance.resolved(store.general)
+            let badge = Badge.combine(store.members(of: group).compactMap { badges[$0.bundleID] })
+            return ReorderStrip.Item(
+                id: "group.\(group.id.uuidString)",
+                name: group.name,
+                image: BadgeRenderer.image(icon: AppIcons.symbol(group.symbol), badge: badge, appearance: appearance),
+                hidden: badge == nil && appearance.emptyBehavior == .hide
+            )
+        }
+        return apps + groups
+    }
+
+    /// Applies a new strip order. The menu bar shows apps before groups, so each kind keeps
+    /// its own run of positions.
+    private func move(_ order: [String]) {
+        store.reorder(byKeys: order)
+    }
+
+    private func status(_ bundleID: String) -> Text {
+        if let badge = store.visibleBadge(for: bundleID, monitor.badges[bundleID]) {
+            return Text(badge.count.map { "\($0) unread" } ?? "New activity")
+        }
+        return Text(AppIcons.isRunning(bundleID) ? "Nothing new" : "Not running")
+    }
+
+    /// A navigation row, like System Settings: tapping anywhere opens the item's page.
+    private func row(
+        _ item: SidebarItem,
+        @ViewBuilder icon: () -> some View,
+        @ViewBuilder title: () -> some View,
+        @ViewBuilder detail: () -> some View
+    ) -> some View {
+        Button {
+            select(item)
+        } label: {
+            HStack(spacing: 10) {
+                icon()
+                VStack(alignment: .leading, spacing: 0) {
+                    title()
+                    detail().font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -318,52 +478,46 @@ private struct AppPane: View {
     @ObservedObject var monitor: BadgeMonitor
     let remove: () -> Void
 
+    @State private var confirmingRemoval = false
+
     var body: some View {
         Form {
             Section {
-                HStack(spacing: 14) {
+                PaneHeader(subtitle: status) {
                     AppIconView(bundleID: app.bundleID, size: 52)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(app.name).font(.title2.weight(.semibold))
-                        Text(status)
-                            .foregroundStyle(.secondary)
-                            .contentTransition(.numericText())
-                    }
-                    Spacer()
+                } title: {
+                    Text(app.name)
+                } trailing: {
                     Button("Open") { AppIcons.open(app.bundleID) }
                         .nativeButton()
                 }
-                .padding(.vertical, 4)
-
-                BadgePreview(icon: AppIcons.menuBarIcon(for: app), appearance: app.appearance, badge: monitor.badges[app.bundleID])
             }
 
-            Section("Badge") {
-                StylePicker(appearance: $app.appearance, icon: AppIcons.menuBarIcon(for: app))
+            Section("Appearance") {
+                LabeledContent("Style") {
+                    StylePicker(appearance: $app.appearance, icon: AppIcons.menuBarIcon(for: app))
+                }
                 LabeledContent("Color") { ColorSwatches(hex: $app.appearance.colorHex) }
                 Picker("When nothing is new", selection: $app.appearance.emptyBehavior) {
-                    ForEach(EmptyBehavior.allCases) { Text($0.label).tag($0) }
+                    EmptyBehaviorOptions(global: store.general.emptyBehavior)
                 }
-            }
-
-            Section("Icon") {
                 Picker("Icon", selection: $app.iconStyle) {
                     ForEach(IconStyle.allCases) { Text($0.label).tag($0) }
                 }
-                .pickerStyle(.segmented)
                 if app.iconStyle == .custom {
                     LabeledContent("Image") {
-                        HStack {
+                        HStack(spacing: 8) {
                             Text(app.customIconPath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "None")
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                             Button("Choose…", action: chooseIcon)
+                                .nativeButton()
                         }
                     }
                 }
             }
 
-            Section("Organization") {
+            Section("Details") {
                 TextField("Name", text: $app.name)
                 Picker("Group", selection: $app.groupID) {
                     Text("None").tag(UUID?.none)
@@ -374,17 +528,23 @@ private struct AppPane: View {
             Section {
                 HStack {
                     Spacer()
-                    Button("Remove from Menu Bar", role: .destructive, action: remove)
+                    Button("Remove from Menu Bar…", role: .destructive) { confirmingRemoval = true }
+                        .nativeButton()
                 }
             }
         }
         .formStyle(.grouped)
         .navigationTitle(app.name)
+        .confirmationDialog("Remove \(app.name) from the menu bar?", isPresented: $confirmingRemoval) {
+            Button("Remove", role: .destructive, action: remove)
+        } message: {
+            Text("You can add it again at any time.")
+        }
     }
 
     private var status: String {
-        guard AppIcons.isRunning(app.bundleID) else { return "Not running — open it to receive badges" }
-        guard let badge = monitor.badges[app.bundleID] else { return "Running · No new notifications" }
+        guard AppIcons.isRunning(app.bundleID) else { return "Not running · open it to receive badges" }
+        guard let badge = monitor.badges[app.bundleID] else { return "Running · Nothing new" }
         guard let count = badge.count else { return "Running · New activity" }
         return "Running · \(count) unread"
     }
@@ -405,68 +565,35 @@ private struct GroupPane: View {
     @ObservedObject var monitor: BadgeMonitor
     let remove: () -> Void
 
-    private static let symbols = [
-        "tray.full", "bubble.left.and.bubble.right.fill", "envelope.fill", "bell.fill",
-        "person.2.fill", "briefcase.fill", "message.fill", "star.fill",
-        "house.fill", "gamecontroller.fill", "phone.fill", "megaphone.fill",
+    @State private var confirmingRemoval = false
+
+    private static let symbols: [(name: String, title: String)] = [
+        ("tray.full.fill", "Inbox"), ("bubble.left.and.bubble.right.fill", "Chats"),
+        ("message.fill", "Message"), ("envelope.fill", "Mail"), ("bell.fill", "Bell"),
+        ("person.2.fill", "People"), ("briefcase.fill", "Work"), ("house.fill", "Home"),
+        ("star.fill", "Star"), ("phone.fill", "Phone"), ("megaphone.fill", "Announcements"),
+        ("gamecontroller.fill", "Games"),
     ]
 
     var body: some View {
         Form {
             Section {
-                HStack(spacing: 14) {
+                PaneHeader(subtitle: memberSummary) {
+                    // Same squircle as the sidebar, at header size.
                     Image(systemName: group.symbol)
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(.white)
                         .frame(width: 52, height: 52)
-                        .glassSurface(cornerRadius: 14, tint: color.opacity(0.35))
-                    VStack(alignment: .leading, spacing: 3) {
-                        TextField("Group name", text: $group.name)
-                            .textFieldStyle(.plain)
-                            .font(.title2.weight(.semibold))
-                        Text("\(store.members(of: group).count) apps · shown as one icon")
-                            .foregroundStyle(.secondary)
-                    }
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.gray.gradient))
+                } title: {
+                    TextField("Group Name", text: $group.name, prompt: Text("Group Name"))
+                        .textFieldStyle(.plain)
+                        .labelsHidden()
+                } trailing: {
+                    EmptyView()
                 }
-                .padding(.vertical, 4)
-
-                BadgePreview(
-                    icon: AppIcons.symbol(group.symbol),
-                    appearance: group.appearance,
-                    badge: Badge.combine(store.members(of: group).compactMap { monitor.badges[$0.bundleID] })
-                )
-            }
-
-            Section("Symbol") {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
-                    ForEach(Self.symbols, id: \.self) { symbol in
-                        let selected = group.symbol == symbol
-                        Button {
-                            withAnimation(.snappy) { group.symbol = symbol }
-                        } label: {
-                            Image(systemName: symbol)
-                                .font(.system(size: 15))
-                                .frame(maxWidth: .infinity, minHeight: 34)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(selected ? Color.brand.opacity(0.18) : Color.primary.opacity(0.04))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .strokeBorder(selected ? Color.brand : .clear, lineWidth: 1.5)
-                                )
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            Section("Badge") {
-                StylePicker(appearance: $group.appearance, icon: AppIcons.symbol(group.symbol))
-                LabeledContent("Color") { ColorSwatches(hex: $group.appearance.colorHex) }
-                Picker("When nothing is new", selection: $group.appearance.emptyBehavior) {
-                    ForEach(EmptyBehavior.allCases) { Text($0.label).tag($0) }
-                }
+            } footer: {
+                FooterNote("A group shows several apps as one menu bar icon, with their unread counts added together.")
             }
 
             Section {
@@ -485,28 +612,49 @@ private struct GroupPane: View {
                             AppIconView(bundleID: app.bundleID)
                         }
                     }
-                    .toggleStyle(.checkbox)
                 }
             } header: {
                 Text("Apps in This Group")
-            } footer: {
-                Text("Hover over the group's icon to see each app's notifications.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            }
+
+            Section("Appearance") {
+                Picker("Symbol", selection: $group.symbol) {
+                    ForEach(Self.symbols, id: \.name) { Label($0.title, systemImage: $0.name).tag($0.name) }
+                }
+                LabeledContent("Style") {
+                    StylePicker(appearance: $group.appearance, icon: AppIcons.symbol(group.symbol))
+                }
+                LabeledContent("Color") { ColorSwatches(hex: $group.appearance.colorHex) }
+                Picker("When nothing is new", selection: $group.appearance.emptyBehavior) {
+                    EmptyBehaviorOptions(global: store.general.emptyBehavior)
+                }
             }
 
             Section {
                 HStack {
                     Spacer()
-                    Button("Delete Group", role: .destructive, action: remove)
+                    Button("Delete Group…", role: .destructive) { confirmingRemoval = true }
+                        .nativeButton()
                 }
             }
         }
         .formStyle(.grouped)
-        .navigationTitle(group.name)
+        .navigationTitle(group.name.isEmpty ? "Group" : group.name)
+        .confirmationDialog("Delete the group “\(group.name)”?", isPresented: $confirmingRemoval) {
+            Button("Delete Group", role: .destructive, action: remove)
+        } message: {
+            Text("Its apps go back to having their own menu bar icons.")
+        }
     }
 
-    private var color: Color { Color(nsColor: NSColor(hex: group.appearance.colorHex) ?? .systemBlue) }
+    private var memberSummary: String {
+        let members = store.members(of: group)
+        switch members.count {
+        case 0: return "No apps yet · choose them below"
+        case 1: return "1 app · shown as one icon"
+        default: return "\(members.count) apps · shown as one icon"
+        }
+    }
 }
 
 // MARK: - General page
@@ -533,6 +681,7 @@ private struct GeneralPane: View {
                     detail: "Reads unread counts from Dock icons.",
                     symbol: "accessibility",
                     granted: monitor.isTrusted,
+                    actionTitle: "Set Up…",
                     action: openGuide
                 )
                 PermissionRow(
@@ -541,57 +690,61 @@ private struct GeneralPane: View {
                     symbol: "text.bubble",
                     granted: hasFullDiskAccess,
                     optional: true,
+                    actionTitle: "Open Settings…",
                     action: Permissions.openFullDiskAccessSettings
                 )
             } header: {
                 Text("Permissions")
-            } footer: {
-                Text("Everything stays on your Mac. BadgeBar never connects to the internet.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
-            Section("Menu Bar") {
+            Section {
+                Picker("When nothing is new", selection: $store.general.emptyBehavior) {
+                    ForEach(EmptyBehavior.concrete) { Text($0.label).tag($0) }
+                }
                 Toggle("Show apps automatically when they have notifications", isOn: $store.general.autoShowBadgedApps)
-                Toggle("Show BadgeBar icon", isOn: $store.general.showMainIcon)
+                Toggle("Always show BadgeBar icon", isOn: $store.general.showMainIcon)
+                Picker("Refresh badges", selection: $store.general.pollInterval) {
+                    ForEach(Self.intervals, id: \.1) { Text($0.0).tag($0.1) }
+                }
+            } header: {
+                Text("Menu Bar")
+            } footer: {
+                FooterNote("Apps can override what happens when nothing is new on their own pages. Refreshing less often uses a little less energy.")
             }
 
-            Section("Previews") {
+            Section {
                 Toggle("Preview notifications on hover", isOn: $store.general.showHoverPreviews)
-                Toggle("Include message content", isOn: $store.general.showMessageContent)
-                    .disabled(!store.general.showHoverPreviews)
+                Toggle("Show message text", isOn: $store.general.showMessageContent)
+            } header: {
+                Text("Previews")
+            } footer: {
+                FooterNote("Message text comes from Notification Center and needs Full Disk Access. It's read on your Mac and never leaves it.")
             }
 
-            Section("System") {
+            Section("About") {
                 Toggle("Open at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
                 if let loginError {
                     Text(loginError).font(.caption).foregroundStyle(.red)
                 }
-                Picker("Check for badges", selection: $store.general.pollInterval) {
-                    ForEach(Self.intervals, id: \.1) { Text($0.0).tag($0.1) }
-                }
-            }
-
-            Section {
                 LabeledContent("Welcome guide") {
                     Button("Show…", action: openGuide)
+                        .nativeButton()
                 }
                 LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")
-            } footer: {
-                Text("Tip: hold ⌘ and drag menu bar icons to rearrange them.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .navigationTitle("General")
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             hasFullDiskAccess = Permissions.hasFullDiskAccess
+            launchAtLogin = SMAppService.mainApp.status == .enabled
         }
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
+        // Also called when the toggle catches up with a change made in System Settings.
+        guard enabled != (SMAppService.mainApp.status == .enabled) else { return }
         do {
             if enabled {
                 try SMAppService.mainApp.register()
@@ -602,5 +755,30 @@ private struct GeneralPane: View {
         } catch {
             loginError = "Couldn't update login item: \(error.localizedDescription)"
         }
+    }
+}
+
+/// A section footer note, leading-aligned like System Settings.
+private struct FooterNote: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Sets the hosting window's title. The window is created by AppKit, so SwiftUI's
+/// `navigationTitle` doesn't reach its toolbar on its own.
+private struct WindowTitle: NSViewRepresentable {
+    let title: String
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { view.window?.title = title }
     }
 }

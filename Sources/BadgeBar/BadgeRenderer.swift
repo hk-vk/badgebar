@@ -7,7 +7,9 @@ enum BadgeRenderer {
     private static let barHeight: CGFloat = 22
 
     static func image(icon: NSImage, badge: Badge?, appearance: BadgeAppearance) -> NSImage {
-        let color = NSColor(hex: appearance.colorHex) ?? .systemRed
+        // A badge without a number (Slack's unread-channel dot, for example) only signals
+        // quiet activity, so it's drawn in a muted gray instead of the badge color.
+        let color = badge?.count == nil ? NSColor.secondaryLabelColor : NSColor(hex: appearance.colorHex) ?? .systemRed
         let dimmed = badge == nil && appearance.emptyBehavior == .dim
         let iconRect = NSRect(x: 0, y: (barHeight - iconSize) / 2, width: iconSize, height: iconSize)
 
@@ -20,9 +22,9 @@ enum BadgeRenderer {
         switch appearance.style {
         case .dot:
             let d: CGFloat = 6
-            return draw(width: iconSize + 2) { _ in
+            return draw(width: iconSize) { _ in
                 drawIcon(icon, in: iconRect, alpha: 1)
-                let dot = NSRect(x: iconSize + 2 - d, y: iconRect.maxY - d + 1, width: d, height: d)
+                let dot = NSRect(x: iconSize - d + 0.5, y: iconRect.maxY - d + 1.5, width: d, height: d)
                 strokedFill(NSBezierPath(ovalIn: dot), color)
             }
 
@@ -33,8 +35,9 @@ enum BadgeRenderer {
             let textSize = (text as NSString).size(withAttributes: attrs)
             let h: CGFloat = text.isEmpty ? 7 : 11
             let w = max(h, textSize.width + 5)
-            // The pill overlaps the icon's top-right corner and may extend past it.
-            let x = max(iconSize - w * 0.65, iconSize * 0.35)
+            // The pill sits on the icon's top-right corner, like a Dock badge, so the item is no
+            // wider than the icon. Only long labels ("99+") widen it.
+            let x = max(iconSize - w + 1, 0)
             let width = max(iconSize, x + w)
             return draw(width: width) { _ in
                 drawIcon(icon, in: iconRect, alpha: 1)
@@ -54,7 +57,7 @@ enum BadgeRenderer {
             let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
             let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
             let textSize = (text as NSString).size(withAttributes: attrs)
-            let gap: CGFloat = 3
+            let gap: CGFloat = 2
             return draw(width: iconSize + gap + ceil(textSize.width)) { _ in
                 drawIcon(icon, in: iconRect, alpha: 1)
                 let origin = NSPoint(x: iconSize + gap, y: (barHeight - textSize.height) / 2)

@@ -24,14 +24,14 @@ final class PreviewPopover: NSObject, NSPopoverDelegate {
         popover.delegate = self
     }
 
-    func hoverBegan(key: String, button: NSView, content: @escaping () -> AnyView) {
+    func hoverBegan(key: String, button: NSView, rect: NSRect? = nil, content: @escaping () -> AnyView) {
         pending?.cancel()
         if popover.isShown {
-            if anchorKey != key { show(key: key, button: button, content: content(), pinned: false) }
+            if anchorKey != key { show(key: key, button: button, rect: rect, content: content(), pinned: false) }
             return
         }
         schedule(after: 0.35) { [weak self] in
-            self?.show(key: key, button: button, content: content(), pinned: false)
+            self?.show(key: key, button: button, rect: rect, content: content(), pinned: false)
         }
     }
 
@@ -42,12 +42,12 @@ final class PreviewPopover: NSObject, NSPopoverDelegate {
     }
 
     /// Opens (or toggles) the preview right away, e.g. on click.
-    func toggle(key: String, button: NSView, content: AnyView) {
+    func toggle(key: String, button: NSView, rect: NSRect? = nil, content: AnyView) {
         pending?.cancel()
         if popover.isShown, anchorKey == key {
             close()
         } else {
-            show(key: key, button: button, content: content, pinned: true)
+            show(key: key, button: button, rect: rect, content: content, pinned: true)
         }
     }
 
@@ -57,7 +57,7 @@ final class PreviewPopover: NSObject, NSPopoverDelegate {
         anchorKey = nil
     }
 
-    private func show(key: String, button: NSView, content: AnyView, pinned: Bool) {
+    private func show(key: String, button: NSView, rect: NSRect?, content: AnyView, pinned: Bool) {
         self.pinned = pinned
         let root = content
             .fixedSize()
@@ -82,7 +82,8 @@ final class PreviewPopover: NSObject, NSPopoverDelegate {
         popover.contentSize = hosting.fittingSize
         anchorKey = key
         // Showing an already-open popover moves it to the new anchor.
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // Below the icon. Buttons use flipped coordinates, where the bottom edge is maxY.
+        popover.show(relativeTo: rect ?? button.bounds, of: button, preferredEdge: button.isFlipped ? .maxY : .minY)
         watchOutsideClicks()
     }
 
@@ -132,25 +133,4 @@ extension EnvironmentValues {
         get { self[ClosePreviewKey.self] }
         set { self[ClosePreviewKey.self] = newValue }
     }
-}
-
-/// Forwards mouse enter/exit on a status item button.
-final class HoverTracker: NSResponder {
-    private let onChange: (Bool) -> Void
-
-    init(view: NSView, onChange: @escaping (Bool) -> Void) {
-        self.onChange = onChange
-        super.init()
-        view.addTrackingArea(NSTrackingArea(
-            rect: .zero,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self
-        ))
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func mouseEntered(with event: NSEvent) { onChange(true) }
-    override func mouseExited(with event: NSEvent) { onChange(false) }
 }

@@ -18,14 +18,20 @@ else
 fi
 APP="build/BadgeBar.app"
 
-swift build -c release --arch arm64 --arch x86_64
-BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/BadgeBar"
+# SwiftPM records the deployment target (14.0) as the SDK version in the binary, and macOS
+# then draws the app with its old, pre-Liquid Glass controls. Record the real SDK instead.
+SDK_VERSION="$(xcrun --show-sdk-version)"
+LINK_FLAGS=(-Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$SDK_VERSION")
+
+swift build -c release --arch arm64 --arch x86_64 "${LINK_FLAGS[@]}"
+BIN="$(swift build -c release --arch arm64 --arch x86_64 "${LINK_FLAGS[@]}" --show-bin-path)/BadgeBar"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/BadgeBar"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp Resources/AppIcon-dark.png "$APP/Contents/Resources/AppIcon-dark.png"
 
 codesign --force --options runtime --sign "$IDENTITY" "$APP"
 echo "Built $APP"

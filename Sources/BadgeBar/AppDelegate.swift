@@ -21,8 +21,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         app.run()
     }
 
+    private var appearanceObservation: NSKeyValueObservation?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMainMenu()
+
+        // The bundle icon is the light design; swap in the dark one for the Dock and ⌘-Tab
+        // while the system is in dark mode.
+        appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.initial, .new]) { app, _ in
+            let dark = app.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let url = Bundle.main.url(forResource: "AppIcon-dark", withExtension: "png")
+            DispatchQueue.main.async {
+                app.applicationIconImage = dark ? url.flatMap(NSImage.init(contentsOf:)) : nil
+            }
+        }
 
         monitor.start(interval: store.general.pollInterval)
         store.$general
@@ -84,7 +96,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
             let window = NSWindow(contentViewController: hosting)
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+            // A toolbar gives the window the tall, modern title bar that the sidebar runs up
+            // into, as in System Settings. Without one it gets a thin, old-style title bar.
+            window.toolbar = NSToolbar(identifier: "BadgeBarSettings")
             window.toolbarStyle = .unified
+            window.titlebarSeparatorStyle = .none
             window.title = "BadgeBar"
             window.setContentSize(NSSize(width: 820, height: 600))
             window.setFrameAutosaveName("BadgeBarSettings")
@@ -100,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         onboardingWindow?.close()
         let view = OnboardingView(store: store, monitor: monitor, step: step) { [weak self] openSettings in
             self?.onboardingWindow?.close()
-            if openSettings { self?.showSettings(selecting: .general) }
+            if openSettings { self?.showSettings(selecting: .menuBar) }
         }
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.styleMask = [.titled, .closable, .fullSizeContentView]
@@ -127,6 +143,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let others = [settingsWindow, onboardingWindow].compactMap { $0 }.filter { $0 !== closing && $0.isVisible }
         if others.isEmpty {
             DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
+        }
+        // Release closed windows and their view trees; BadgeBar mostly lives in the menu bar,
+        // so there's no point holding on to them. The router keeps the selected page.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if closing === self.settingsWindow { self.settingsWindow = nil }
+            if closing === self.onboardingWindow { self.onboardingWindow = nil }
         }
     }
 

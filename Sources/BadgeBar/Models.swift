@@ -14,15 +14,21 @@ enum BadgeStyle: String, Codable, CaseIterable, Identifiable {
 
 /// What to do with a menu bar item when its app has no badge.
 enum EmptyBehavior: String, Codable, CaseIterable, Identifiable {
+    /// Follow the global setting in General.
+    case useDefault
     case dim, hide, show
     var id: String { rawValue }
     var label: String {
         switch self {
+        case .useDefault: return "Use Default"
         case .dim: return "Dim icon"
         case .hide: return "Hide icon"
         case .show: return "Show normally"
         }
     }
+
+    /// The concrete choices, for the global setting.
+    static var concrete: [EmptyBehavior] { [.dim, .hide, .show] }
 }
 
 enum IconStyle: String, Codable, CaseIterable, Identifiable {
@@ -41,7 +47,14 @@ enum IconStyle: String, Codable, CaseIterable, Identifiable {
 struct BadgeAppearance: Codable, Hashable {
     var style: BadgeStyle = .circle
     var colorHex: String = "#FF3B30"
-    var emptyBehavior: EmptyBehavior = .dim
+    var emptyBehavior: EmptyBehavior = .useDefault
+
+    /// Replaces "Use Default" with the global rule.
+    func resolved(_ general: GeneralSettings) -> BadgeAppearance {
+        var appearance = self
+        if appearance.emptyBehavior == .useDefault { appearance.emptyBehavior = general.emptyBehavior }
+        return appearance
+    }
 }
 
 struct TrackedApp: Codable, Identifiable, Hashable {
@@ -66,9 +79,12 @@ struct AppGroup: Codable, Identifiable, Hashable {
 struct GeneralSettings: Codable, Hashable {
     /// Show a temporary item for any badged app that isn't explicitly tracked.
     var autoShowBadgedApps = true
-    var showMainIcon = true
+    /// Show BadgeBar's own icon in the menu bar. It also appears while permission is missing.
+    var showMainIcon = false
     var pollInterval: Double = 1.5
     var showHoverPreviews = true
+    /// What icons do when their app has nothing new, unless an app overrides it.
+    var emptyBehavior: EmptyBehavior = .dim
     /// Include notification titles and bodies in previews (needs Full Disk Access).
     var showMessageContent = true
     var hasCompletedOnboarding = false
@@ -83,6 +99,7 @@ struct GeneralSettings: Codable, Hashable {
         showMainIcon = try c.decodeIfPresent(Bool.self, forKey: .showMainIcon) ?? d.showMainIcon
         pollInterval = try c.decodeIfPresent(Double.self, forKey: .pollInterval) ?? d.pollInterval
         showHoverPreviews = try c.decodeIfPresent(Bool.self, forKey: .showHoverPreviews) ?? d.showHoverPreviews
+        emptyBehavior = try c.decodeIfPresent(EmptyBehavior.self, forKey: .emptyBehavior) ?? d.emptyBehavior
         showMessageContent = try c.decodeIfPresent(Bool.self, forKey: .showMessageContent) ?? d.showMessageContent
         hasCompletedOnboarding = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? d.hasCompletedOnboarding
     }
@@ -94,10 +111,14 @@ struct ClearedNotifications: Codable, Hashable {
     var before: [String: Date] = [:]
     /// Individually dismissed notification record IDs.
     var ids: Set<Int64> = []
+    /// Per lowercased bundle ID: the badge the user marked as read. It stays hidden until the
+    /// count goes up, a new notification arrives, or the badge disappears.
+    var acknowledged: [String: String] = [:]
 }
 
 /// A page in the settings sidebar.
 enum SidebarItem: Hashable {
+    case menuBar
     case general
     case app(String)
     case group(UUID)
