@@ -16,6 +16,7 @@ enum AppIcons {
     /// The icon drawn in the menu bar for a tracked app, honoring its icon style. It's kept as
     /// a small bitmap at menu bar size, so the menu bar never holds on to full-size icons.
     static func menuBarIcon(for app: TrackedApp) -> NSImage {
+        if app.iconStyle == .custom, let name = app.customSymbol { return symbol(name) }
         let key = "\(app.bundleID)|\(app.iconStyle.rawValue)|\(app.customIconPath ?? "")"
         if let cached = cache[key] { return cached }
 
@@ -64,6 +65,28 @@ enum AppIcons {
         } catch {
             return nil
         }
+    }
+
+    /// Saves an app's icon as an image in BadgeBar's own folder, for using it as another
+    /// item's icon. Returns the image's path.
+    static func importAppIcon(_ bundleID: String) -> String? {
+        guard let folder = customIconFolder else { return nil }
+        var rect = NSRect(x: 0, y: 0, width: 256, height: 256)
+        guard let cgImage = icon(for: bundleID).cgImage(forProposedRect: &rect, context: nil, hints: nil),
+              let png = NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) else { return nil }
+        let copy = folder.appendingPathComponent(UUID().uuidString).appendingPathExtension("png")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try png.write(to: copy)
+            return copy.path
+        } catch {
+            return nil
+        }
+    }
+
+    /// An app's name as Finder shows it.
+    static func name(for bundleID: String) -> String {
+        url(for: bundleID).map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") } ?? bundleID
     }
 
     /// Deletes a copy made by `importCustomIcon`. Paths elsewhere (set by older versions,

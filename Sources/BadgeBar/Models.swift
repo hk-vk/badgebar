@@ -65,7 +65,7 @@ enum IconStyle: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .original: return "Original"
         case .monochrome: return "Monochrome"
-        case .custom: return "Custom image"
+        case .custom: return "Custom"
         }
     }
 }
@@ -91,6 +91,8 @@ struct TrackedApp: Codable, Identifiable, Hashable {
     var appearance = BadgeAppearance()
     var iconStyle: IconStyle = .original
     var customIconPath: String?
+    /// An SF Symbol used instead of `customIconPath` when the icon style is custom.
+    var customSymbol: String?
     /// When set, the app is shown inside this group instead of on its own.
     var groupID: UUID?
 }
