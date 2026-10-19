@@ -1,0 +1,92 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "automatic-gradient": "display-p3:0.97,0.97,0.98,1"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "display-p3:0.11,0.11,0.13,1"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "name": "badge",
+          "image-name-specializations": [
+            {
+              "value": "badge-light.svg"
+            },
+            {
+              "appearance": "dark",
+              "value": "badge.svg"
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    },
+    {
+      "layers": [
+        {
+          "name": "card",
+          "image-name-specializations": [
+            {
+              "value": "card-light.svg"
+            },
+            {
+              "appearance": "dark",
+              "value": "card.svg"
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.4
+      }
+    },
+    {
+      "layers": [
+        {
+          "name": "stack",
+          "image-name-specializations": [
+            {
+              "value": "stack-light.svg"
+            },
+            {
+              "appearance": "dark",
+              "value": "stack.svg"
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.4
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

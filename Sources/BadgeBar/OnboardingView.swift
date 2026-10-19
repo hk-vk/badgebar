@@ -177,7 +177,7 @@ private struct WelcomePage: View {
 
             VStack(alignment: .leading, spacing: 16) {
                 Feature(symbol: "app.badge", title: "Badges at a glance", detail: "Slack, Mail, Messages and more — counts update live.")
-                Feature(symbol: "text.bubble", title: "Read without switching", detail: "Hover to peek, click to see every unread message.")
+                Feature(symbol: "text.bubble", title: "Read without switching", detail: "Right-click an icon to read its unread messages.")
                 Feature(symbol: "square.stack", title: "Make it yours", detail: "Group apps under one icon and pick colors and styles.")
             }
             .frame(width: 420, alignment: .leading)
@@ -449,8 +449,8 @@ private struct PreviewsPage: View {
             Spacer(minLength: 0)
             PageHeader(
                 symbol: "text.bubble",
-                title: "Preview Messages on Hover",
-                subtitle: "Optional. Rest the pointer on an icon to read recent notifications without switching apps."
+                title: "Read Messages from the Menu Bar",
+                subtitle: "Optional. Right-click an icon to read its recent notifications without switching apps."
             )
 
             NotificationCard(
@@ -504,7 +504,7 @@ private struct PreviewsPage: View {
                     }
                     .font(.callout)
                 } else {
-                    Text("Skip this and hovering still shows unread counts.")
+                    Text("Skip this and the menu bar still shows unread counts.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -538,7 +538,7 @@ private struct DonePage: View {
                 Text("You're All Set")
                     .font(.largeTitle.weight(.bold))
                     .tracking(-0.4)
-                Text("Look up at your menu bar. Click an icon to open its app, hover to peek at messages, or right-click to read them all.")
+                Text("Look up at your menu bar. Click an icon to open its app, or right-click to read its messages.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

@@ -9,5 +9,10 @@ let package = Package(
             name: "BadgeBar",
             path: "Sources/BadgeBar"
         ),
+        .testTarget(
+            name: "BadgeBarTests",
+            dependencies: ["BadgeBar"],
+            path: "Tests/BadgeBarTests"
+        ),
     ]
 )

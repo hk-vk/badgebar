@@ -6,6 +6,8 @@
 	<string>BadgeBar</string>
 	<key>CFBundleExecutable</key>
 	<string>BadgeBar</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>

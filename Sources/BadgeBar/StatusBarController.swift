@@ -35,6 +35,8 @@ final class StatusBarController: NSObject {
     private let openGuide: () -> Void
     /// Where the open menu came from, so its items can show a preview from the same icon.
     private var menuSource: NSStatusBarButton?
+    /// Where that icon was clicked, in screen coordinates.
+    private var menuClick: NSPoint?
     private let preview = PreviewPopover()
     private lazy var effects = BadgeEffects(
         draw: { [weak self] key, image in
@@ -46,18 +48,13 @@ final class StatusBarController: NSObject {
 
     private var items: [String: NSStatusItem] = [:]
     private var kinds: [String: Kind] = [:]
-    private var pointerMonitors: [Any] = []
-    /// Tracking areas don't retain their owners.
-    private var hoverTrackers: [String: HoverTracker] = [:]
-    /// The order of app and group items last put in the menu bar.
-    private var appliedOrder: [String]?
-    /// Bumped each time BadgeBar re-adds its items in a new order. macOS remembers each item's
-    /// spot by its autosave name and offers no way to clear it, so re-added items get fresh names.
-    private var itemGeneration = UserDefaults.standard.integer(forKey: "statusItemGeneration") {
-        didSet { UserDefaults.standard.set(itemGeneration, forKey: "statusItemGeneration") }
-    }
-    /// The item under the pointer, for hover previews.
-    private var hoveredKey: String?
+    /// The menu bar items that app and group items are shown in, under fixed autosave names.
+    /// macOS remembers where each one sits (e.g. outside a menu bar hider like Hidden Bar), so
+    /// arranging only changes which item each slot shows; slots are never renamed or re-added.
+    /// macOS puts a new item left of the others, so higher numbers start further left.
+    private var slots: [NSStatusItem] = []
+    /// Slot numbers from left to right, as last seen on screen.
+    private var slotOrder: [Int] = []
     private var cancellables: Set<AnyCancellable> = []
 
     init(
@@ -71,6 +68,7 @@ final class StatusBarController: NSObject {
         self.openSettings = openSettings
         self.openGuide = openGuide
         super.init()
+        Self.forgetRenamedItems()
 
         // @Published fires before the value changes, so hop to the next runloop turn
         // and coalesce bursts of changes into one rebuild.
@@ -90,7 +88,6 @@ final class StatusBarController: NSObject {
         effects.isReady = true
         // Badges that were there at launch only play when they repeat; pick those up now.
         if store.general.repeatBadgeEffect { rebuild() }
-        watchPointer()
     }
 
     // MARK: - Building items
@@ -130,7 +127,7 @@ final class StatusBarController: NSObject {
             let memberBadges = members.compactMap { badges[$0.bundleID] }
             let badge = Badge.combine(memberBadges)
             let appearance = group.appearance.resolved(store.general)
-            let icon = AppIcons.symbol(group.symbol)
+            let icon = AppIcons.menuBarIcon(for: group)
             specs.append(Spec(
                 key: "group.\(group.id.uuidString)",
                 kind: .group(group.id),
@@ -197,26 +194,18 @@ final class StatusBarController: NSObject {
         let wanted = Set(specs.map(\.key))
         for (key, item) in items where !wanted.contains(key) {
             if preview.anchorKey == key { preview.close() }
-            NSStatusBar.system.removeStatusItem(item)
+            // Slots are reused or removed in `assignSlots`.
+            if !Self.isOrdered(key) { NSStatusBar.system.removeStatusItem(item) }
             items[key] = nil
             kinds[key] = nil
-            hoverTrackers[key] = nil
             effects.remove(key: key)
         }
 
-        let order = specs.map(\.key).filter(Self.isOrdered)
-        if let appliedOrder, appliedOrder != order {
-            recreateItems(order)
-        } else if appliedOrder == nil {
-            // macOS doesn't tell apps where their items sit, so the order in Settings is the
-            // one source of truth. Start under fresh names so old ⌘-drag spots don't override it.
-            itemGeneration += 1
-        }
-        appliedOrder = order
+        assignSlots(specs.map(\.key).filter(Self.isOrdered))
 
         // macOS places each new item to the left of the existing ones, so create right to left.
         for spec in specs.reversed() where items[spec.key] == nil {
-            _ = makeItem(key: spec.key)
+            items[spec.key] = makeItem(key: spec.key, autosaveName: "BadgeBar.\(spec.key)")
         }
 
         for spec in specs {
@@ -227,8 +216,7 @@ final class StatusBarController: NSObject {
             // A fixed width that hugs the image. Variable-length items add generous padding on
             // both sides, which spreads several badge icons too far apart.
             item.length = ceil(spec.image.size.width) + Self.itemPadding
-            // Hovering shows a richer preview, so skip the tooltip that would cover it.
-            item.button?.toolTip = store.general.showHoverPreviews && spec.key != "main" ? nil : spec.tooltip
+            item.button?.toolTip = spec.tooltip
             item.button?.setAccessibilityLabel(spec.tooltip)
             if item.isVisible != spec.visible { item.isVisible = spec.visible }
         }
@@ -242,124 +230,69 @@ final class StatusBarController: NSObject {
         key.hasPrefix("app.") || key.hasPrefix("group.")
     }
 
-    /// Puts items back in the given order: removes them, then adds them again under fresh
-    /// autosave names, right to left, so macOS places them as new items instead of restoring
-    /// their old spots.
-    private func recreateItems(_ order: [String]) {
-        preview.close()
-        hoveredKey = nil
-        for key in order {
-            if let item = items[key] { NSStatusBar.system.removeStatusItem(item) }
-            items[key] = nil
+    /// Shows app and group items in the menu bar slots, left to right in the given order.
+    private func assignSlots(_ order: [String]) {
+        while slots.count < order.count {
+            slots.append(makeItem(key: "", autosaveName: "BadgeBar.slot.\(slots.count)"))
         }
-        itemGeneration += 1
-        for key in order.reversed() { _ = makeItem(key: key) }
+        while slots.count > order.count, let slot = slots.popLast() {
+            NSStatusBar.system.removeStatusItem(slot)
+        }
+        updateSlotOrder()
+
+        for (key, index) in zip(order, slotOrder) {
+            let slot = slots[index]
+            guard items[key] !== slot else { continue }
+            if preview.anchorKey == key { preview.close() }
+            items[key] = slot
+            slot.button?.identifier = NSUserInterfaceItemIdentifier(key)
+            effects.redraw(key: key)
+        }
     }
 
-    private func makeItem(key: String) -> NSStatusItem {
+    /// Reads the slots' left-to-right order from the screen when macOS reports real, distinct
+    /// positions. Otherwise (items hidden by a menu bar hider, or placeholder geometry) keeps
+    /// the last known order, with new slots on the left, where macOS adds them.
+    private func updateSlotOrder() {
+        let frames = slots.map { $0.button?.window?.frame ?? .zero }
+        if frames.allSatisfy({ $0.height > 0 }), Set(frames.map(\.minX)).count == frames.count {
+            slotOrder = slots.indices.sorted { frames[$0].minX < frames[$1].minX }
+        } else {
+            let known = slotOrder.filter { $0 < slots.count }
+            slotOrder = slots.indices.filter { !known.contains($0) }.reversed() + known
+        }
+    }
+
+    /// Earlier versions re-added items under a new name each time they were arranged, which
+    /// macOS treats as brand-new items and places at the far left, inside a menu bar hider's
+    /// hidden section. Drops the settings macOS kept for all those old names.
+    private static func forgetRenamedItems() {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: "statusItemGeneration") != nil else { return }
+        for key in defaults.dictionaryRepresentation().keys
+        where key.hasPrefix("NSStatusItem") && (key.contains("BadgeBar.app.") || key.contains("BadgeBar.group.")) {
+            defaults.removeObject(forKey: key)
+        }
+        defaults.removeObject(forKey: "statusItemGeneration")
+    }
+
+    private func makeItem(key: String, autosaveName: String) -> NSStatusItem {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         // macOS remembers each item's spot by this name.
-        item.autosaveName = Self.isOrdered(key) && itemGeneration > 0
-            ? "BadgeBar.\(key).\(itemGeneration)"
-            : "BadgeBar.\(key)"
+        item.autosaveName = autosaveName
         if let button = item.button {
             button.identifier = NSUserInterfaceItemIdentifier(key)
             button.target = self
             button.action = #selector(clicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.imagePosition = .imageOnly
-            let tracker = HoverTracker(key: key, controller: self)
-            button.addTrackingArea(NSTrackingArea(
-                rect: .zero,
-                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                owner: tracker,
-                userInfo: nil
-            ))
-            hoverTrackers[key] = tracker
         }
-        items[key] = item
         return item
     }
 
     private func tooltip(_ name: String, _ badge: Badge?) -> String {
         guard let badge else { return name }
         return badge.count == nil ? "\(name) — new activity" : "\(name) — \(badge.label)"
-    }
-
-    // MARK: - Hover previews
-
-    /// Watches the pointer everywhere, for macOS versions that report where items sit. Newer
-    /// ones draw items in a system process and only report placeholder frames; there the
-    /// tracking areas added in `makeItem` take over.
-    private func watchPointer() {
-        let moved: () -> Void = { [weak self] in MainActor.assumeIsolated { self?.pointerMoved() } }
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: { _ in moved() }) {
-            pointerMonitors.append(global)
-        }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved, handler: { event in moved(); return event }) {
-            pointerMonitors.append(local)
-        }
-    }
-
-    private func pointerMoved() {
-        let location = NSEvent.mouseLocation
-        // Mouse moves arrive constantly from every app. Skip the item lookup unless the pointer
-        // is in a menu bar, or is just leaving an item.
-        guard hoveredKey != nil || Self.isInMenuBar(location), hasGeometry else { return }
-        let hit = item(at: location)
-        hoverChanged(to: hit?.key, button: hit?.button)
-    }
-
-    private static var isArranging: Bool {
-        NSEvent.modifierFlags.contains(.command) || NSEvent.pressedMouseButtons != 0
-    }
-
-    private var hasGeometry: Bool {
-        items.values.contains { ($0.button?.window?.frame.height ?? 0) > 0 }
-    }
-
-    fileprivate func pointer(enteredKey key: String, inside: Bool) {
-        if inside {
-            hoverChanged(to: key, button: items[key]?.button)
-        } else if hoveredKey == key {
-            hoverChanged(to: nil, button: nil)
-        }
-    }
-
-    private func hoverChanged(to key: String?, button: NSStatusBarButton?) {
-        guard key != hoveredKey else { return }
-        if let old = hoveredKey { preview.hoverEnded(key: old) }
-        hoveredKey = key
-        // ⌘-dragging icons around the menu bar passes over them; that isn't hovering.
-        if Self.isArranging {
-            if !preview.isPinned { preview.close() }
-            return
-        }
-        guard let key, let button, store.general.showHoverPreviews else { return }
-        preview.hoverBegan(key: key, button: button) { [weak self] in
-            self?.previewContent(for: key) ?? AnyView(EmptyView())
-        }
-    }
-
-    private static func isInMenuBar(_ location: NSPoint) -> Bool {
-        NSScreen.screens.contains { screen in
-            let frame = screen.frame
-            let barHeight = max(frame.maxY - screen.visibleFrame.maxY, 24)
-            return location.x >= frame.minX && location.x <= frame.maxX
-                && location.y >= frame.maxY - barHeight && location.y <= frame.maxY
-        }
-    }
-
-    /// The menu bar item under a screen point.
-    private func item(at location: NSPoint) -> (key: String, button: NSStatusBarButton)? {
-        for (key, item) in items where key != "main" && item.isVisible {
-            guard let button = item.button, let window = button.window else { continue }
-            let frame = window.convertToScreen(button.convert(button.bounds, to: nil))
-            // The menu bar's top pixel row counts too, so pushing against the screen edge works.
-            guard frame.insetBy(dx: 0, dy: -1).contains(location) else { continue }
-            return (key, button)
-        }
-        return nil
     }
 
     private func previewContent(for key: String, history: Bool = false) -> AnyView {
@@ -476,28 +409,29 @@ final class StatusBarController: NSObject {
     // MARK: - Clicks
 
     @objc private func clicked(_ sender: NSStatusBarButton) {
-        guard let key = sender.identifier?.rawValue else { return }
         let event = NSApp.currentEvent
+        guard let key = sender.identifier?.rawValue else { return }
         guard let kind = kinds[key] else { return }
         let secondary = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
         if secondary { preview.close() }
         menuSource = sender
+        menuClick = NSEvent.mouseLocation
 
         switch (kind, secondary) {
         case (.main, false) where monitor.isTrusted:
-            preview.toggle(key: key, button: sender, content: previewContent(for: key))
+            preview.toggle(key: key, button: sender, click: menuClick, content: previewContent(for: key))
         case (.main, _):
             preview.close()
             show(mainMenu(), from: sender)
         case let (.app(bundleID, _, _), false):
-            // Like a Dock icon: a click opens the app. Messages are a hover or right-click away.
+            // Like a Dock icon: a click opens the app. Messages are a right-click away.
             preview.close()
             AppIcons.open(bundleID)
         case let (.app(bundleID, name, tracked), true):
             show(appMenu(key: key, bundleID: bundleID, name: name, tracked: tracked), from: sender)
         case (.group, false):
             // A group has no single app to open, so a click shows its messages.
-            preview.toggle(key: key, button: sender, content: previewContent(for: key))
+            preview.toggle(key: key, button: sender, click: menuClick, content: previewContent(for: key))
         case let (.group(id), true):
             show(groupMenu(key: key, id: id), from: sender)
         }
@@ -578,7 +512,7 @@ final class StatusBarController: NSObject {
                 openSettings(.app(bundleID))
             })
             menu.addItem(ClosureMenuItem("Remove from Menu Bar", symbol: "minus.circle") { [store] in
-                store.apps.removeAll { $0.bundleID == bundleID }
+                store.removeApp(bundleID)
             })
         } else {
             menu.addItem(ClosureMenuItem("Keep in Menu Bar", symbol: "pin") { [store] in
@@ -672,6 +606,7 @@ final class StatusBarController: NSObject {
             self.preview.toggle(
                 key: key,
                 button: button,
+                click: self.menuClick,
                 content: self.previewContent(for: key, history: true)
             )
         }
@@ -691,25 +626,6 @@ final class StatusBarController: NSObject {
         }
         return item
     }
-}
-
-/// Forwards a status button's tracking area events to the controller.
-@MainActor
-private final class HoverTracker: NSResponder {
-    let key: String
-    weak var controller: StatusBarController?
-
-    init(key: String, controller: StatusBarController) {
-        self.key = key
-        self.controller = controller
-        super.init()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func mouseEntered(with event: NSEvent) { controller?.pointer(enteredKey: key, inside: true) }
-    override func mouseExited(with event: NSEvent) { controller?.pointer(enteredKey: key, inside: false) }
 }
 
 /// NSMenuItem that runs a closure when chosen.

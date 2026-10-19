@@ -39,7 +39,7 @@ struct SettingsView: View {
         case let .app(id):
             if let binding = appBinding(id) {
                 AppPane(app: binding, store: store, monitor: monitor) {
-                    store.apps.removeAll { $0.bundleID == id }
+                    store.removeApp(id)
                     router.selection = .menuBar
                 }
                 .id(id)
@@ -153,7 +153,7 @@ private struct Sidebar: View {
                             badgeLabel(Badge.combine(store.members(of: group).compactMap { monitor.badges[$0.bundleID] }))
                         }
                     } icon: {
-                        SidebarSymbol(name: group.symbol, color: .gray)
+                        GroupIcon(group: group)
                     }
                     .tag(SidebarItem.group(group.id))
                     .contextMenu { groupMenu(group) }
@@ -250,7 +250,7 @@ private struct Sidebar: View {
         let order = rowOrder
         let index = order.firstIndex(of: item)
         switch item {
-        case let .app(id): store.apps.removeAll { $0.bundleID == id }
+        case let .app(id): store.removeApp(id)
         case let .group(id): store.deleteGroup(id)
         case .menuBar, .appearance, .general: return
         }
@@ -308,6 +308,25 @@ private struct SidebarSymbol: View {
             .foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).fill(color.gradient))
+    }
+}
+
+/// A group's icon in Settings: its custom image, or its symbol on a gray squircle.
+private struct GroupIcon: View {
+    let group: AppGroup
+    var size: CGFloat = 20
+
+    var body: some View {
+        if group.customIconPath != nil {
+            Image(nsImage: AppIcons.menuBarIcon(for: group))
+                .resizable()
+                .scaledToFit()
+                .padding(size * 0.12)
+                .frame(width: size, height: size)
+                .background(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).fill(.quaternary))
+        } else {
+            SidebarSymbol(name: group.symbol, color: .gray, size: size)
+        }
     }
 }
 
@@ -389,7 +408,7 @@ private struct MenuBarPane: View {
                 ForEach(store.groups) { group in
                     let members = store.members(of: group)
                     row(.group(group.id)) {
-                        SidebarSymbol(name: group.symbol, color: .gray, size: 28)
+                        GroupIcon(group: group, size: 28)
                     } title: {
                         Text(group.name)
                     } detail: {
@@ -458,7 +477,7 @@ private struct MenuBarPane: View {
             return ReorderStrip.Item(
                 id: "group.\(group.id.uuidString)",
                 name: group.name,
-                image: BadgeRenderer.image(icon: AppIcons.symbol(group.symbol), badge: badge, appearance: appearance),
+                image: BadgeRenderer.image(icon: AppIcons.menuBarIcon(for: group), badge: badge, appearance: appearance),
                 hidden: !store.shouldShow(badge: badge, appearance: appearance, bundleIDs: members.map(\.bundleID), running: running)
             )
         }
@@ -587,8 +606,10 @@ private struct AppPane: View {
     private func chooseIcon() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        app.customIconPath = url.path
+        guard panel.runModal() == .OK, let url = panel.url,
+              let copy = AppIcons.importCustomIcon(from: url) else { return }
+        AppIcons.removeCustomIcon(app.customIconPath)
+        app.customIconPath = copy
     }
 }
 
@@ -610,16 +631,36 @@ private struct GroupPane: View {
         ("gamecontroller.fill", "Games"),
     ]
 
+    /// Choosing "Custom image" asks for the image right away; going back to "Symbol" drops it.
+    private var usesCustomImage: Binding<Bool> {
+        Binding(
+            get: { group.customIconPath != nil },
+            set: { custom in
+                if custom {
+                    chooseImage()
+                } else {
+                    AppIcons.removeCustomIcon(group.customIconPath)
+                    group.customIconPath = nil
+                }
+            }
+        )
+    }
+
+    private func chooseImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        guard panel.runModal() == .OK, let url = panel.url,
+              let copy = AppIcons.importCustomIcon(from: url) else { return }
+        AppIcons.removeCustomIcon(group.customIconPath)
+        group.customIconPath = copy
+    }
+
     var body: some View {
         Form {
             Section {
                 PaneHeader(subtitle: memberSummary) {
                     // Same squircle as the sidebar, at header size.
-                    Image(systemName: group.symbol)
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 52, height: 52)
-                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.gray.gradient))
+                    GroupIcon(group: group, size: 52)
                 } title: {
                     TextField("Group Name", text: $group.name, prompt: Text("Group Name"))
                         .textFieldStyle(.plain)
@@ -653,11 +694,29 @@ private struct GroupPane: View {
             }
 
             Section("Appearance") {
-                Picker("Symbol", selection: $group.symbol) {
-                    ForEach(Self.symbols, id: \.name) { Label($0.title, systemImage: $0.name).tag($0.name) }
+                Picker("Icon", selection: usesCustomImage) {
+                    Text("Symbol").tag(false)
+                    Text("Custom image").tag(true)
+                }
+                if let path = group.customIconPath {
+                    LabeledContent("Image") {
+                        HStack(spacing: 8) {
+                            Image(nsImage: AppIcons.menuBarIcon(for: group))
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
+                                .help(URL(fileURLWithPath: path).lastPathComponent)
+                            Button("Choose…", action: chooseImage)
+                                .nativeButton()
+                        }
+                    }
+                } else {
+                    Picker("Symbol", selection: $group.symbol) {
+                        ForEach(Self.symbols, id: \.name) { Label($0.title, systemImage: $0.name).tag($0.name) }
+                    }
                 }
                 LabeledContent("Style") {
-                    StylePicker(appearance: $group.appearance, icon: AppIcons.symbol(group.symbol))
+                    StylePicker(appearance: $group.appearance, icon: AppIcons.menuBarIcon(for: group))
                 }
                 LabeledContent("Color") { ColorSwatches(hex: $group.appearance.colorHex) }
                 Picker("When nothing is new", selection: $group.appearance.emptyBehavior) {
@@ -701,11 +760,21 @@ private struct AppearancePane: View {
     var body: some View {
         Form {
             Section {
+                LabeledContent("App icon") {
+                    AppIconPicker(choice: $store.general.appIcon)
+                }
+            } header: {
+                Text("BadgeBar")
+            } footer: {
+                FooterNote("Shown in the Dock and app switcher while a BadgeBar window is open. Automatic follows the icon style set in System Settings ▸ Appearance.")
+            }
+
+            Section {
                 Picker("When nothing is new", selection: $store.general.emptyBehavior) {
                     ForEach(EmptyBehavior.concrete) { Text($0.label).tag($0) }
                 }
             } header: {
-                Text("Icons")
+                Text("Menu Bar Icons")
             } footer: {
                 FooterNote("Apps and groups can override this on their own pages.")
             }
@@ -723,7 +792,6 @@ private struct AppearancePane: View {
             }
 
             Section {
-                Toggle("Preview notifications on hover", isOn: $store.general.showHoverPreviews)
                 Toggle("Show message text", isOn: $store.general.showMessageContent)
             } header: {
                 Text("Previews")

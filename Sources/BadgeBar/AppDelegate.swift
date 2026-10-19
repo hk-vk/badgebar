@@ -22,20 +22,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         app.run()
     }
 
-    private var appearanceObservation: NSKeyValueObservation?
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMainMenu()
 
-        // The bundle icon is the light design; swap in the dark one for the Dock and ⌘-Tab
-        // while the system is in dark mode.
-        appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.initial, .new]) { app, _ in
-            let dark = app.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            let url = Bundle.main.url(forResource: "AppIcon-dark", withExtension: "png")
-            DispatchQueue.main.async {
-                app.applicationIconImage = dark ? url.flatMap(NSImage.init(contentsOf:)) : nil
-            }
-        }
+        // The bundle icon follows the system's icon style by itself; the App Icon setting can
+        // pin the Dock and ⌘-Tab to the light or dark version instead.
+        store.$general
+            .map(\.appIcon)
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateAppIcon() }
+            .store(in: &cancellables)
 
         monitor.start(interval: store.general.pollInterval)
         store.$general
@@ -74,6 +71,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } else if !monitor.isTrusted {
             showOnboarding(at: .accessibility)
         }
+    }
+
+    private func updateAppIcon() {
+        let name: String? = switch store.general.appIcon {
+        case .automatic: nil
+        case .light: "AppIcon-light"
+        case .dark: "AppIcon-dark"
+        }
+        NSApp.applicationIconImage = name
+            .flatMap { Bundle.main.url(forResource: $0, withExtension: "png") }
+            .flatMap(NSImage.init(contentsOf:))
     }
 
     /// Launching the app again (e.g. from Finder or Spotlight) while it's running opens settings.
