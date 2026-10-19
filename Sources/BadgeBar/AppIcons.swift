@@ -34,6 +34,45 @@ enum AppIcons {
         return small
     }
 
+    /// The icon drawn in the menu bar for a group: its custom image, or else its symbol.
+    static func menuBarIcon(for group: AppGroup) -> NSImage {
+        guard let path = group.customIconPath else { return symbol(group.symbol) }
+        let key = "group|\(path)"
+        if let cached = cache[key] { return cached }
+        guard let image = NSImage(contentsOfFile: path) else { return symbol(group.symbol) }
+        let small = BadgeRenderer.rasterized(image, trimmingMargins: true)
+        cache[key] = small
+        return small
+    }
+
+    /// Where copies of images chosen as icons are kept.
+    private static var customIconFolder: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("BadgeBar/Icons", isDirectory: true)
+    }
+
+    /// Copies an image chosen as an icon into BadgeBar's own folder, so the icon keeps working
+    /// if the original is moved or deleted. Returns the copy's path.
+    static func importCustomIcon(from url: URL) -> String? {
+        guard let folder = customIconFolder, NSImage(contentsOf: url) != nil else { return nil }
+        let copy = folder.appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(url.pathExtension.isEmpty ? "png" : url.pathExtension)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: url, to: copy)
+            return copy.path
+        } catch {
+            return nil
+        }
+    }
+
+    /// Deletes a copy made by `importCustomIcon`. Paths elsewhere (set by older versions,
+    /// pointing at the user's own files) are left alone.
+    static func removeCustomIcon(_ path: String?) {
+        guard let path, let folder = customIconFolder, path.hasPrefix(folder.path + "/") else { return }
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
     /// An untracked app's icon for the menu bar, trimmed and kept small like tracked ones.
     static func menuBarIcon(for bundleID: String) -> NSImage {
         let key = "\(bundleID)|auto"

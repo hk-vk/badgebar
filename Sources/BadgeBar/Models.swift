@@ -26,6 +26,19 @@ enum BadgeEffect: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Which version of BadgeBar's own icon the Dock and app switcher show.
+enum AppIconChoice: String, Codable, CaseIterable, Identifiable {
+    case automatic, light, dark
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
 /// What to do with a menu bar item when its app has no badge.
 enum EmptyBehavior: String, Codable, CaseIterable, Identifiable {
     /// Follow the global setting in Appearance.
@@ -87,6 +100,8 @@ struct AppGroup: Codable, Identifiable, Hashable {
     var name: String
     /// SF Symbol shown in the menu bar for the group.
     var symbol: String = "tray.full"
+    /// An image shown instead of the symbol: a copy in BadgeBar's own folder.
+    var customIconPath: String?
     var appearance = BadgeAppearance()
 }
 
@@ -96,7 +111,6 @@ struct GeneralSettings: Codable, Hashable {
     /// Show BadgeBar's own icon in the menu bar. It also appears while permission is missing.
     var showMainIcon = false
     var pollInterval: Double = 1.5
-    var showHoverPreviews = true
     /// What icons do when their app has nothing new, unless an app overrides it.
     var emptyBehavior: EmptyBehavior = .dim
     /// Hide icons for apps that aren't open, unless they still show a badge.
@@ -105,6 +119,8 @@ struct GeneralSettings: Codable, Hashable {
     var badgeEffect: BadgeEffect = .pulse
     /// Keeps replaying the effect every few seconds while a badge is unread.
     var repeatBadgeEffect = false
+    /// The icon shown in the Dock while a BadgeBar window is open.
+    var appIcon: AppIconChoice = .automatic
     /// Include notification titles and bodies in previews (needs Full Disk Access).
     var showMessageContent = true
     var hasCompletedOnboarding = false
@@ -118,11 +134,11 @@ struct GeneralSettings: Codable, Hashable {
         autoShowBadgedApps = try c.decodeIfPresent(Bool.self, forKey: .autoShowBadgedApps) ?? d.autoShowBadgedApps
         showMainIcon = try c.decodeIfPresent(Bool.self, forKey: .showMainIcon) ?? d.showMainIcon
         pollInterval = try c.decodeIfPresent(Double.self, forKey: .pollInterval) ?? d.pollInterval
-        showHoverPreviews = try c.decodeIfPresent(Bool.self, forKey: .showHoverPreviews) ?? d.showHoverPreviews
         emptyBehavior = try c.decodeIfPresent(EmptyBehavior.self, forKey: .emptyBehavior) ?? d.emptyBehavior
         hideWhenNotRunning = try c.decodeIfPresent(Bool.self, forKey: .hideWhenNotRunning) ?? d.hideWhenNotRunning
         badgeEffect = try c.decodeIfPresent(BadgeEffect.self, forKey: .badgeEffect) ?? d.badgeEffect
         repeatBadgeEffect = try c.decodeIfPresent(Bool.self, forKey: .repeatBadgeEffect) ?? d.repeatBadgeEffect
+        appIcon = try c.decodeIfPresent(AppIconChoice.self, forKey: .appIcon) ?? d.appIcon
         showMessageContent = try c.decodeIfPresent(Bool.self, forKey: .showMessageContent) ?? d.showMessageContent
         hasCompletedOnboarding = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? d.hasCompletedOnboarding
     }

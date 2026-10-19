@@ -82,6 +82,12 @@ final class BadgeEffects {
         entries[key] = nil
     }
 
+    /// Forgets which frame is on screen, so the next update draws it again. Used when an item
+    /// moves to another menu bar slot, which still shows the previous item's image.
+    func redraw(key: String) {
+        entries[key]?.shown = nil
+    }
+
     /// Whether this class draws the item's image, rather than the caller.
     func isAnimating(_ key: String) -> Bool {
         guard let entry = entries[key], entry.badge != nil, resolvedEffect != .off else { return false }

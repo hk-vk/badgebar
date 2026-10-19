@@ -91,6 +91,54 @@ struct StylePicker: View {
     }
 }
 
+/// BadgeBar's own icon in its light and dark versions, plus Automatic, which shows both.
+struct AppIconPicker: View {
+    @Binding var choice: AppIconChoice
+
+    private static let light = Bundle.main.url(forResource: "AppIcon-light", withExtension: "png")
+        .flatMap(NSImage.init(contentsOf:))
+    private static let dark = Bundle.main.url(forResource: "AppIcon-dark", withExtension: "png")
+        .flatMap(NSImage.init(contentsOf:))
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach(AppIconChoice.allCases) { option in
+                ChoiceTile(title: option.label, selected: choice == option) {
+                    choice = option
+                } thumbnail: {
+                    thumbnail(option)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func thumbnail(_ option: AppIconChoice) -> some View {
+        let light = Image(nsImage: Self.light ?? NSImage())
+        let dark = Image(nsImage: Self.dark ?? Self.light ?? NSImage())
+        switch option {
+        case .light:
+            light.resizable().frame(width: 30, height: 30)
+        case .dark:
+            dark.resizable().frame(width: 30, height: 30)
+        case .automatic:
+            // Half light, half dark, split on the diagonal.
+            ZStack {
+                light.resizable()
+                dark.resizable().mask(
+                    Path { p in
+                        p.move(to: CGPoint(x: 30, y: 0))
+                        p.addLine(to: CGPoint(x: 30, y: 30))
+                        p.addLine(to: CGPoint(x: 0, y: 30))
+                        p.closeSubpath()
+                    }
+                )
+            }
+            .frame(width: 30, height: 30)
+        }
+    }
+}
+
 /// The badge attention effects, each previewed playing on a sample icon.
 struct EffectPicker: View {
     @Binding var effect: BadgeEffect

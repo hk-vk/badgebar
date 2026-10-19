@@ -43,6 +43,10 @@ struct NotificationViewer: View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
+            if case .group = model.scope, !model.apps.isEmpty {
+                quickLinks
+            }
+
             if model.showsContent && !model.canReadNotifications {
                 FullDiskAccessCard()
             }
@@ -135,6 +139,29 @@ struct NotificationViewer: View {
             }
             .controlSize(.small)
         }
+    }
+
+    // MARK: Quick links
+
+    /// One button per app in the group, plus Open All to bring every one of them up at once.
+    private var quickLinks: some View {
+        HStack(spacing: 6) {
+            ForEach(model.apps) { app in
+                Button { open(app.bundleID) } label: {
+                    AppIconView(bundleID: app.bundleID, size: 24)
+                }
+                .buttonStyle(.plain)
+                .help("Open \(app.name)")
+                .accessibilityLabel("Open \(app.name)")
+            }
+            Spacer(minLength: 8)
+            if model.apps.count > 1 {
+                Button("Open All") { openAll() }
+                    .nativeButton(prominent: true)
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 4)
     }
 
     private var summary: String {
@@ -279,6 +306,11 @@ struct NotificationViewer: View {
     private func open(_ bundleID: String) {
         close()
         AppIcons.open(bundleID)
+    }
+
+    private func openAll() {
+        close()
+        model.apps.forEach { AppIcons.open($0.bundleID) }
     }
 }
 

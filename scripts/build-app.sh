@@ -30,8 +30,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/BadgeBar"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
-cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-cp Resources/AppIcon-dark.png "$APP/Contents/Resources/AppIcon-dark.png"
+# The icon is an Icon Composer document. actool compiles it into Assets.car, which macOS
+# renders with Liquid Glass in the user's icon style (default, dark, clear, tinted), plus an
+# AppIcon.icns for older systems.
+xcrun actool Resources/AppIcon.icon --compile "$APP/Contents/Resources" \
+  --platform macosx --minimum-deployment-target 14.0 --app-icon AppIcon \
+  --output-partial-info-plist "$(mktemp -d)/icon.plist" >/dev/null
+# Fixed light and dark renderings, for the App Icon choice in Settings.
+cp Resources/AppIcon-light.png Resources/AppIcon-dark.png "$APP/Contents/Resources/"
 
 codesign --force --options runtime --sign "$IDENTITY" "$APP"
 echo "Built $APP"

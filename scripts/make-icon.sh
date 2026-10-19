@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
-# Regenerates Resources/AppIcon.icns and AppIcon.png from Resources/AppIcon.svg, and
-# Resources/AppIcon-dark.png (used for the Dock in dark mode) from AppIcon-dark.svg.
+# Renders the fixed light and dark versions of Resources/AppIcon.icon (the Icon Composer
+# document the app icon is built from) for the App Icon choice in Settings, and a 1024 px
+# Resources/AppIcon.png for the README. Needs Xcode with Icon Composer.
+#
+# Edit the icon itself in Icon Composer (Xcode ▸ Open Developer Tool ▸ Icon Composer).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+ICTOOL="$(dirname "$(xcode-select -p)")/Applications/Icon Composer.app/Contents/Executables/ictool"
 
-swift scripts/make-icon.swift Resources/AppIcon.svg "$TMP/icon.png"
-ICONSET="$TMP/AppIcon.iconset"
-mkdir "$ICONSET"
-for s in 16 32 128 256 512; do
-  sips -z $s $s "$TMP/icon.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
-  sips -z $((s*2)) $((s*2)) "$TMP/icon.png" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o Resources/AppIcon.icns
-cp "$TMP/icon.png" Resources/AppIcon.png
-swift scripts/make-icon.swift Resources/AppIcon-dark.svg "$TMP/icon-dark.png"
-sips -z 512 512 "$TMP/icon-dark.png" --out Resources/AppIcon-dark.png >/dev/null
-echo "Wrote Resources/AppIcon.icns"
+render() {
+  "$ICTOOL" Resources/AppIcon.icon --export-image --output-file "$2" \
+    --platform macOS --rendition "$1" --width "$3" --height "$3" --scale 1 >/dev/null
+}
+render Default Resources/AppIcon-light.png 512
+render Dark Resources/AppIcon-dark.png 512
+render Default Resources/AppIcon.png 1024
+echo "Rendered Resources/AppIcon-light.png, AppIcon-dark.png and AppIcon.png"

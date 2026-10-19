@@ -1,151 +1,190 @@
 import AppKit
 import SwiftUI
 
-/// Shows a notification preview popover when the pointer rests on a menu bar item.
+/// Shows a notification preview under a menu bar item when it's clicked. It stays open until
+/// the user clicks the item again or clicks anywhere else.
 ///
-/// Behaves like the menu bar itself: once a preview is open, moving to a neighbouring item
-/// switches to it immediately, and the preview stays open while the pointer is inside it.
+/// This is a panel placed at exact screen coordinates, not an NSPopover. macOS 27 reports a
+/// status button's vertical position, and which popover edge counts as "below", differently
+/// between launches, so NSPopover opened the preview far down the screen or off its top.
+/// The panel hangs from the menu bar's bottom edge, which macOS always reports correctly.
 @MainActor
-final class PreviewPopover: NSObject, NSPopoverDelegate {
-    private let popover = NSPopover()
-    private var pending: DispatchWorkItem?
-    private var pointerInPopover = false
-    /// Opened by a click: stays open until the user clicks elsewhere, instead of on mouse-out.
-    private var pinned = false
+final class PreviewPopover: NSObject {
+    private var panel: PreviewPanel?
     private var outsideClickMonitor: Any?
+    private var iconFrame: NSRect = .zero
+    /// The preview's content; the panel is sized to fit it.
+    private var hosting: FirstMouseHostingView?
+    private var screen: NSScreen?
     private(set) var anchorKey: String?
+    /// The preview closed by the last outside click, and when. Menu bar icons are drawn by
+    /// another process on macOS 27, so clicking the preview's own icon also counts as an
+    /// outside click: it closes the preview just before the icon's action runs.
+    private var closedByClick: (key: String, time: Date)?
 
-    var isShown: Bool { popover.isShown }
-    var isPinned: Bool { popover.isShown && pinned }
+    var isShown: Bool { panel?.isVisible ?? false }
 
-    override init() {
-        super.init()
-        popover.behavior = .applicationDefined
-        popover.animates = true
-        popover.delegate = self
-    }
-
-    func hoverBegan(key: String, button: NSView, rect: NSRect? = nil, content: @escaping () -> AnyView) {
-        pending?.cancel()
-        if popover.isShown {
-            if anchorKey != key { show(key: key, button: button, rect: rect, content: content(), pinned: false) }
-            return
-        }
-        schedule(after: 0.35) { [weak self] in
-            // A ⌘-drag in the menu bar may have started while waiting.
-            guard !NSEvent.modifierFlags.contains(.command), NSEvent.pressedMouseButtons == 0 else { return }
-            self?.show(key: key, button: button, rect: rect, content: content(), pinned: false)
-        }
-    }
-
-    func hoverEnded(key: String) {
-        pending?.cancel()
-        guard popover.isShown, anchorKey == key, !pinned else { return }
-        scheduleClose()
-    }
-
-    /// Opens (or toggles) the preview right away, e.g. on click.
-    func toggle(key: String, button: NSView, rect: NSRect? = nil, content: AnyView) {
-        pending?.cancel()
-        if popover.isShown, anchorKey == key {
+    /// Opens the preview, or closes it if it's already open for this item. `click` is where the
+    /// icon was clicked, in screen coordinates.
+    func toggle(key: String, button: NSView, rect: NSRect? = nil, click: NSPoint? = nil, content: AnyView) {
+        let justClosed = closedByClick.map { $0.key == key && Date().timeIntervalSince($0.time) < 0.5 } ?? false
+        closedByClick = nil
+        if isShown, anchorKey == key {
             close()
+        } else if justClosed {
+            // This click already closed it; reopening would make the icon impossible to close.
+            return
         } else {
-            show(key: key, button: button, rect: rect, content: content, pinned: true)
+            show(key: key, button: button, rect: rect, click: click, content: content)
         }
     }
 
     func close() {
-        pending?.cancel()
-        popover.performClose(nil)
+        panel?.orderOut(nil)
         anchorKey = nil
+        hosting = nil
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        outsideClickMonitor = nil
     }
 
-    private func show(key: String, button: NSView, rect: NSRect?, content: AnyView, pinned: Bool) {
-        self.pinned = pinned
+    private func show(key: String, button: NSView, rect: NSRect?, click: NSPoint?, content: AnyView) {
+        let anchor = rect ?? button.bounds
+        iconFrame = button.window?.convertToScreen(button.convert(anchor, to: nil)) ?? anchor
+        screen = button.window?.screen ?? NSScreen.main
+        // The button can report a made-up frame too (e.g. at the screen's left edge). Where the
+        // user clicked is always on the icon, so centre on that when the two disagree.
+        if let click, !(iconFrame.minX - 1...iconFrame.maxX + 1 ~= click.x) {
+            iconFrame = NSRect(x: click.x - 11, y: iconFrame.minY, width: 22, height: iconFrame.height)
+            screen = NSScreen.screens.first { $0.frame.contains(click) } ?? screen
+        }
+
         let root = content
             .fixedSize()
-            .onHover { [weak self] inside in
-                guard let self else { return }
-                self.pointerInPopover = inside
-                if inside { self.pending?.cancel() } else if !self.pinned { self.scheduleClose() }
-            }
             // Follow the content as cards are cleared or expanded.
-            .onGeometryChange(for: CGSize.self, of: \.size) { [weak self] size in
-                guard let self, self.popover.isShown, size.width > 0, size.height > 0 else { return }
-                self.popover.contentSize = size
+            .onGeometryChange(for: CGSize.self, of: \.size) { [weak self] _ in
+                // Measured afresh rather than using this size: it can arrive before the
+                // panel is on screen, or mid-animation.
+                DispatchQueue.main.async { self?.fitContent() }
             }
             .environment(\.closePreview) { [weak self] in self?.close() }
 
         let hosting = FirstMouseHostingView(rootView: AnyView(root))
-        hosting.frame.size = hosting.fittingSize
-        let controller = NSViewController()
-        controller.view = hosting
+        self.hosting = hosting
+        let panel = self.panel ?? PreviewPanel()
+        self.panel = panel
+        panel.setContent(hosting)
 
-        popover.contentViewController = controller
-        popover.contentSize = hosting.fittingSize
+        let opening = !panel.isVisible
         anchorKey = key
-        // Showing an already-open popover moves it to the new anchor.
-        let anchor = rect ?? button.bounds
-        // On macOS 27, maxY is the edge below the icon; other versions are checked on first use.
-        let edge = Self.belowEdge ?? .maxY
-        popover.show(relativeTo: anchor, of: button, preferredEdge: edge)
-        if Self.belowEdge == nil { learnBelowEdge(tried: edge, anchor: anchor, button: button) }
-        watchOutsideClicks()
-    }
-
-    /// The edge that puts the popover below a menu bar icon. Which edge that is depends on
-    /// how the macOS version reports the status button's coordinates, so it's found by
-    /// looking where the first popover actually landed.
-    private static var belowEdge: NSRectEdge?
-
-    private func learnBelowEdge(tried edge: NSRectEdge, anchor: NSRect, button: NSView) {
-        guard let window = button.window, let popoverWindow = popover.contentViewController?.view.window else { return }
-        let icon = window.convertToScreen(button.convert(anchor, to: nil))
-        // Placeholder geometry (zero height) says nothing about where things landed.
-        guard icon.height > 0 else { return }
-        if popoverWindow.frame.maxY <= icon.minY + 2 {
-            Self.belowEdge = edge
-        } else {
-            // It opened over or above the icon: the other edge is the one below.
-            let other: NSRectEdge = edge == .minY ? .maxY : .minY
-            Self.belowEdge = other
-            popover.show(relativeTo: anchor, of: button, preferredEdge: other)
+        fitContent()
+        if opening {
+            panel.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0
+            panel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.12
+                panel.animator().alphaValue = 1
+            }
         }
+        watchOutsideClicks()
+        // Text and images finish laying out once the panel is on screen; fit again then.
+        DispatchQueue.main.async { [weak self] in self?.fitContent() }
     }
 
-    /// Clicks in other apps close the popover, as with any menu bar popover.
+    /// Sizes the panel to its content's fully laid-out size. A panel shorter than its content
+    /// cuts off the content's top, since SwiftUI centres it.
+    private func fitContent() {
+        guard let hosting, panel != nil else { return }
+        hosting.layoutSubtreeIfNeeded()
+        let size = hosting.fittingSize
+        guard size.width > 0, size.height > 0 else { return }
+        place(size: size)
+    }
+
+    private func place(size: CGSize) {
+        guard let panel, let screen else { return }
+        let frame = Self.frame(
+            for: size,
+            under: iconFrame,
+            menuBarBottom: Self.menuBarBottom(of: screen),
+            screen: screen.frame
+        )
+        panel.setFrame(frame, display: true)
+        panel.invalidateShadow()
+    }
+
+    /// The bottom edge of the menu bar on this screen.
+    static func menuBarBottom(of screen: NSScreen) -> CGFloat {
+        min(screen.visibleFrame.maxY, screen.frame.maxY - NSStatusBar.system.thickness)
+    }
+
+    /// Where the preview goes: its top a small gap under the menu bar, centred on the icon and
+    /// kept on screen. Only the icon's horizontal position is used, because its vertical
+    /// position isn't reported reliably.
+    nonisolated static func frame(
+        for size: CGSize,
+        under icon: NSRect,
+        menuBarBottom: CGFloat,
+        screen: NSRect,
+        gap: CGFloat = 6,
+        margin: CGFloat = 8
+    ) -> NSRect {
+        let top = menuBarBottom - gap
+        let height = min(size.height, top - (screen.minY + margin))
+        let width = min(size.width, screen.width - margin * 2)
+        let centred = icon.midX - width / 2
+        let x = min(max(centred, screen.minX + margin), screen.maxX - margin - width)
+        return NSRect(x: x, y: top - height, width: width, height: height)
+    }
+
+    /// Clicks in other apps close the preview, as with any menu bar popover.
     private func watchOutsideClicks() {
         guard outsideClickMonitor == nil else { return }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            MainActor.assumeIsolated { self?.close() }
+            MainActor.assumeIsolated {
+                guard let self, let key = self.anchorKey else { return }
+                self.closedByClick = (key, Date())
+                self.close()
+            }
         }
-    }
-
-    private func scheduleClose() {
-        schedule(after: 0.3) { [weak self] in
-            guard let self, !self.pointerInPopover else { return }
-            self.close()
-        }
-    }
-
-    private func schedule(after delay: TimeInterval, _ action: @escaping () -> Void) {
-        pending?.cancel()
-        let work = DispatchWorkItem(block: action)
-        pending = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
-    }
-
-    func popoverDidClose(_ notification: Notification) {
-        pointerInPopover = false
-        pinned = false
-        anchorKey = nil
-        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
-        outsideClickMonitor = nil
     }
 }
 
+/// A borderless panel with the system popover material. It never becomes key, so using a
+/// preview doesn't steal focus from the app you're working in.
+private final class PreviewPanel: NSPanel {
+    private let background = NSVisualEffectView()
+
+    init() {
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        level = .popUpMenu
+        collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
+        isReleasedWhenClosed = false
+
+        background.material = .popover
+        background.state = .active
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 16
+        background.layer?.cornerCurve = .continuous
+        background.layer?.masksToBounds = true
+        contentView = background
+    }
+
+    func setContent(_ view: NSView) {
+        background.subviews.forEach { $0.removeFromSuperview() }
+        view.frame = background.bounds
+        view.autoresizingMask = [.width, .height]
+        background.addSubview(view)
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
 /// Lets buttons in the preview respond to the first click without activating BadgeBar first,
-/// so hovering a preview never steals focus from the app you're working in.
+/// so using a preview never steals focus from the app you're working in.
 final class FirstMouseHostingView: NSHostingView<AnyView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
