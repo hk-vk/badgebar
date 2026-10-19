@@ -6,6 +6,7 @@ import Combine
 final class BadgeMonitor: ObservableObject {
     @Published private(set) var entries: [DockEntry] = []
     @Published private(set) var isTrusted = DockReader.isTrusted
+    @Published private(set) var needsRelaunch = false
 
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
@@ -42,8 +43,10 @@ final class BadgeMonitor: ObservableObject {
     }
 
     func refresh() {
-        let trusted = DockReader.isTrusted
+        let access = DockReader.access()
+        let trusted = access == .granted
         if trusted != isTrusted { isTrusted = trusted }
+        if (access == .needsRelaunch) != needsRelaunch { needsRelaunch = access == .needsRelaunch }
         guard trusted else { return }
 
         let latest = DockReader.read()

@@ -18,7 +18,35 @@ struct DockEntry: Hashable {
 enum DockReader {
     private static var bundleIDCache: [URL: String] = [:]
 
+    enum Access {
+        case granted
+        case denied
+        /// Switched on in System Settings, but macOS won't apply it until BadgeBar relaunches.
+        case needsRelaunch
+    }
+
     static var isTrusted: Bool { AXIsProcessTrusted() }
+
+    /// Checks access by actually talking to the Dock, since `AXIsProcessTrusted` alone can
+    /// report a grant that hasn't taken effect for this process yet.
+    static func access() -> Access {
+        guard let dock = NSRunningApplication
+            .runningApplications(withBundleIdentifier: "com.apple.dock").first
+        else { return isTrusted ? .granted : .denied }
+
+        var value: AnyObject?
+        let result = AXUIElementCopyAttributeValue(
+            AXUIElementCreateApplication(dock.processIdentifier), kAXChildrenAttribute as CFString, &value
+        )
+        switch result {
+        case .success:
+            return .granted
+        case .apiDisabled:
+            return isTrusted ? .needsRelaunch : .denied
+        default:
+            return isTrusted ? .granted : .denied
+        }
+    }
 
     static func requestTrust() {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
