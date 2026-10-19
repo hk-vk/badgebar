@@ -13,7 +13,9 @@ Hide the Dock and still see the unread counts for Slack, Mail, Messages, Discord
 - **Auto mode.** Any badged app you aren't tracking appears automatically. Right-click it and choose *Keep in Menu Bar* to keep it.
 - **Hover previews.** Rest the pointer on an icon to see that app's recent notifications as macOS-style cards. Moving to the next icon switches the preview right away. Hover a card and click ✕ to dismiss it, or use *Clear* to dismiss them all.
 - **Notification viewer.** Click the BadgeBar icon to see every app's notifications in stacks you can expand, with *Clear All*.
-- **Click to open.** Left-click opens the app. Right-click shows more options, including *Customize…*.
+- **Click to open, right-click to read.** Click an icon to open the app, like the Dock. Right-click it for a menu of its latest messages (sender and text), Mark as Read, and *Show All Messages…*. Clicking a group opens its combined view.
+- **Compact layout.** By default, app icons share one menu bar item, so they sit close together. Reorder them by dragging apps in the settings sidebar, or turn this off to get separate items you can ⌘-drag.
+- **Easy adding.** Installed messaging and work apps (Slack, Teams, WhatsApp, Discord and more) are suggested first, every installed app is searchable, and you can drag apps from Finder onto the settings sidebar.
 - **Native settings.** The settings window works like System Settings: use the arrow keys to move through the sidebar, press ⌫ to remove an item, and drag apps to reorder them. On macOS 26 and later it uses Liquid Glass.
 - **Guided setup.** A welcome guide walks you through each permission and notices when you grant it. If macOS needs BadgeBar to restart before a permission takes effect, BadgeBar restarts itself.
 - **⌘-drag to reorder.** Positions are remembered, and the icons work alongside Ice, Bartender, and Hidden Bar.

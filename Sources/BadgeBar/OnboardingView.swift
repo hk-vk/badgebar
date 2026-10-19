@@ -13,6 +13,7 @@ struct OnboardingView: View {
     var finish: (_ openSettings: Bool) -> Void
 
     @State private var forward = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedApps: Set<String> = []
     @State private var style: BadgeStyle = .circle
 
@@ -21,10 +22,7 @@ struct OnboardingView: View {
             ZStack {
                 page
                     .id(step)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
-                        removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)
-                    ))
+                    .transition(pageTransition)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
@@ -32,7 +30,7 @@ struct OnboardingView: View {
             footer
         }
         .frame(width: 640, height: 600)
-        .background(backdrop)
+        .background(Color(nsColor: .windowBackgroundColor).ignoresSafeArea())
         .tint(.brand)
         .onChange(of: monitor.isTrusted) { _, trusted in
             // Move on by itself once access is granted, so there's nothing to click.
@@ -42,16 +40,13 @@ struct OnboardingView: View {
         }
     }
 
-    private var backdrop: some View {
-        ZStack {
-            Color(nsColor: .windowBackgroundColor)
-            LinearGradient(
-                colors: [Color.brand.opacity(0.16), .clear, Color.pink.opacity(0.08)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-        .ignoresSafeArea()
+    /// Pages enter and leave along the same axis, in the direction of travel.
+    private var pageTransition: AnyTransition {
+        if reduceMotion { return .opacity }
+        return .asymmetric(
+            insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)
+        )
     }
 
     @ViewBuilder
@@ -119,15 +114,12 @@ struct OnboardingView: View {
 
     private func go(to next: OnboardingStep) {
         forward = next.rawValue > step.rawValue
-        withAnimation(.spring(duration: 0.45, bounce: 0.15)) { step = next }
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.45, bounce: 0)) { step = next }
     }
 
     private func applySelection() {
-        for entry in monitor.entries where selectedApps.contains(entry.bundleID) && !store.isTracked(entry.bundleID) {
-            var app = TrackedApp(bundleID: entry.bundleID, name: entry.name)
-            app.appearance.style = style
-            store.apps.append(app)
-        }
+        let names = AppChooser.names(for: selectedApps, dockApps: monitor.entries)
+        store.track(bundleIDs: selectedApps, names: names, style: style)
     }
 
     private func complete(openSettings: Bool) {
@@ -144,14 +136,16 @@ private struct PageHeader: View {
     let subtitle: String
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Image(systemName: symbol)
-                .font(.system(size: 30, weight: .medium))
+                .font(.system(size: 40, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.tint)
-                .frame(width: 68, height: 68)
-                .glassSurface(cornerRadius: 20)
+                .frame(height: 52)
+                .padding(.bottom, 6)
             Text(title)
-                .font(.system(size: 26, weight: .bold))
+                .font(.largeTitle.weight(.bold))
+                .tracking(-0.4)
             Text(subtitle)
                 .font(.title3)
                 .foregroundStyle(.secondary)
@@ -172,7 +166,8 @@ private struct WelcomePage: View {
                 .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
             VStack(spacing: 8) {
                 Text("Welcome to BadgeBar")
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.largeTitle.weight(.bold))
+                    .tracking(-0.4)
                 Text("Unread counts from your apps, right in the menu bar.\nHide the Dock without missing a message.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
@@ -180,16 +175,12 @@ private struct WelcomePage: View {
             }
             DemoStrip()
 
-            GlassGroup {
-                VStack(alignment: .leading, spacing: 14) {
-                    Feature(symbol: "app.badge", title: "Badges at a glance", detail: "Slack, Mail, Messages and more — counts update live.")
-                    Feature(symbol: "cursorarrow.rays", title: "Hover to preview", detail: "See recent notifications without switching apps.")
-                    Feature(symbol: "square.stack", title: "Group and style", detail: "Combine apps under one icon, pick colors and badge styles.")
-                }
-                .padding(18)
-                .frame(width: 440, alignment: .leading)
-                .glassSurface(cornerRadius: 18)
+            VStack(alignment: .leading, spacing: 16) {
+                Feature(symbol: "app.badge", title: "Badges at a glance", detail: "Slack, Mail, Messages and more — counts update live.")
+                Feature(symbol: "text.bubble", title: "Read without switching", detail: "Hover to peek, click to see every unread message.")
+                Feature(symbol: "square.stack", title: "Make it yours", detail: "Group apps under one icon and pick colors and styles.")
             }
+            .frame(width: 420, alignment: .leading)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 40)
@@ -227,9 +218,10 @@ private struct Feature: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
-                .font(.system(size: 17, weight: .medium))
+                .font(.title2)
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.tint)
-                .frame(width: 28)
+                .frame(width: 32)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.body.weight(.semibold))
                 Text(detail).font(.callout).foregroundStyle(.secondary)
@@ -263,7 +255,7 @@ private struct AccessibilityPage: View {
             }
             .padding(.vertical, 4)
             .frame(width: 460)
-            .glassSurface(cornerRadius: 16)
+            .contentCard()
 
             status
 
@@ -309,38 +301,31 @@ private struct AccessibilityPage: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 40)
-        .animation(.spring(duration: 0.4, bounce: 0.25), value: isTrusted)
+        .motionAware(.ui, value: isTrusted)
+        .motionAware(.ui, value: needsRelaunch)
     }
 
     @ViewBuilder
     private var status: some View {
-        if needsRelaunch {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Access allowed — restarting BadgeBar to finish…")
+        Group {
+            if needsRelaunch {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Access allowed. Restarting BadgeBar to finish…")
+                }
+            } else if isTrusted {
+                Label("Access granted", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Waiting for access…").foregroundStyle(.secondary)
+                }
             }
-            .font(.headline)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .glassCapsule()
-            .transition(.scale(scale: 0.8).combined(with: .opacity))
-        } else if isTrusted {
-            Label("Access granted — you're good to go", systemImage: "checkmark.circle.fill")
-                .font(.headline)
-                .foregroundStyle(.green)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .glassCapsule()
-                .transition(.scale(scale: 0.8).combined(with: .opacity))
-        } else {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Waiting for access…").foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .glassCapsule()
         }
+        .font(.callout.weight(.medium))
+        .frame(height: 22)
+        .transition(.opacity)
     }
 }
 
@@ -394,55 +379,36 @@ private struct AppsPage: View {
     @Binding var selected: Set<String>
     @Binding var style: BadgeStyle
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
-
     var body: some View {
-        VStack(spacing: 18) {
-            PageHeader(
-                symbol: "square.grid.2x2",
-                title: "Choose Your Apps",
-                subtitle: "These stay in the menu bar. Other apps still appear whenever they have something new."
-            )
-            .padding(.top, 24)
-
-            if candidates.isEmpty {
-                ContentUnavailableView(
-                    monitor.isTrusted ? "No Apps in the Dock" : "Waiting for Access",
-                    systemImage: "dock.rectangle",
-                    description: Text(monitor.isTrusted
-                        ? "Open the apps you want to track, or add them later in Settings."
-                        : "Allow Accessibility access to see your Dock apps here.")
-                )
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 10) {
-                        ForEach(candidates, id: \.bundleID) { entry in
-                            AppTile(entry: entry, isOn: selected.contains(entry.bundleID)) {
-                                if selected.contains(entry.bundleID) {
-                                    selected.remove(entry.bundleID)
-                                } else {
-                                    selected.insert(entry.bundleID)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 40)
-                    .padding(.vertical, 4)
-                }
-
-                VStack(spacing: 8) {
-                    Text("Badge style").font(.callout).foregroundStyle(.secondary)
-                    StylePicker(appearance: styleAppearance, icon: previewIcon)
-                        .frame(width: 360)
-                }
-                .padding(.bottom, 4)
+        VStack(spacing: 14) {
+            VStack(spacing: 6) {
+                Text("Choose Your Apps")
+                    .font(.system(size: 26, weight: .bold))
+                Text("Pick the apps to keep in the menu bar. Others still appear whenever they have something new.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 460)
             }
+            .padding(.top, 28)
+
+            AppChooser(
+                selection: $selected,
+                excluded: Set(store.apps.map(\.bundleID)),
+                dockApps: monitor.entries,
+                badges: monitor.badges,
+                layout: .grid
+            )
+            .padding(.horizontal, 40)
+
+            HStack(spacing: 12) {
+                Text("Badge style").font(.callout).foregroundStyle(.secondary)
+                StylePicker(appearance: styleAppearance, icon: previewIcon)
+                    .frame(width: 330)
+            }
+            .padding(.bottom, 2)
         }
         .onAppear(perform: preselect)
-    }
-
-    private var candidates: [DockEntry] {
-        monitor.entries.filter { !store.isTracked($0.bundleID) }
     }
 
     /// Adapts the single style choice to the appearance-based `StylePicker`.
@@ -459,56 +425,18 @@ private struct AppsPage: View {
 
     /// Preview with one of the chosen apps, so the tiles show the user's own icon.
     private var previewIcon: NSImage {
-        let id = candidates.first { selected.contains($0.bundleID) }?.bundleID ?? "com.apple.MobileSMS"
-        return AppIcons.icon(for: id)
+        AppIcons.icon(for: selected.sorted().first ?? "com.apple.MobileSMS")
     }
 
-    /// Start with whatever already has notifications selected.
+    /// Start with apps that have notifications, plus messaging and work apps that are open.
     private func preselect() {
         guard selected.isEmpty else { return }
-        selected = Set(candidates.filter { $0.badge != nil }.map(\.bundleID))
-    }
-}
-
-private struct AppTile: View {
-    let entry: DockEntry
-    let isOn: Bool
-    let toggle: () -> Void
-
-    var body: some View {
-        Button(action: toggle) {
-            VStack(spacing: 6) {
-                AppIconView(bundleID: entry.bundleID, size: 44)
-                    .overlay(alignment: .topTrailing) {
-                        if let badge = entry.badge {
-                            CountPill(badge: badge).offset(x: 6, y: -4)
-                        }
-                    }
-                Text(entry.name)
-                    .font(.callout)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .overlay(alignment: .topLeading) {
-                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isOn ? Color.brand : Color.secondary.opacity(0.5))
-                    .padding(8)
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isOn ? Color.brand.opacity(0.12) : Color.primary.opacity(0.03))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(isOn ? Color.brand.opacity(0.7) : Color.primary.opacity(0.08), lineWidth: isOn ? 1.5 : 1)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .animation(.snappy(duration: 0.2), value: isOn)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
+        let tracked = Set(store.apps.map(\.bundleID))
+        let badged = monitor.entries.filter { $0.badge != nil }.map(\.bundleID)
+        let runningSuggestions = AppCatalog.suggestions()
+            .filter { $0.category != .apple && AppIcons.isRunning($0.bundleID) }
+            .map(\.bundleID)
+        selected = Set(badged + runningSuggestions).subtracting(tracked)
     }
 }
 
@@ -540,12 +468,9 @@ private struct PreviewsPage: View {
 
             if granted {
                 Label("Previews are on", systemImage: "checkmark.circle.fill")
-                    .font(.headline)
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(.green)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .glassCapsule()
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    .transition(.opacity)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     StepRow(number: 1, text: "Click **Open System Settings** below.", done: openedSettings)
@@ -556,7 +481,7 @@ private struct PreviewsPage: View {
                 }
                 .padding(.vertical, 4)
                 .frame(width: 460)
-                .glassSurface(cornerRadius: 16)
+                .contentCard()
 
                 HStack(spacing: 10) {
                     Button {
@@ -587,7 +512,7 @@ private struct PreviewsPage: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 40)
-        .animation(.spring(duration: 0.4, bounce: 0.25), value: granted)
+        .motionAware(.ui, value: granted)
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             let now = Permissions.hasFullDiskAccess
             if now != granted { granted = now }
@@ -603,13 +528,17 @@ private struct DonePage: View {
     var body: some View {
         VStack(spacing: 24) {
             Spacer(minLength: 0)
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 54))
-                .foregroundStyle(.green)
-                .symbolEffect(.bounce, value: true)
             VStack(spacing: 8) {
-                Text("You're All Set").font(.system(size: 28, weight: .bold))
-                Text("Look up at your menu bar. Click an icon to open its app, hover to preview, or right-click for more.")
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 40))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.green)
+                    .frame(height: 52)
+                    .padding(.bottom, 6)
+                Text("You're All Set")
+                    .font(.largeTitle.weight(.bold))
+                    .tracking(-0.4)
+                Text("Look up at your menu bar. Click an icon to open its app, hover to peek at messages, or right-click to read them all.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -626,6 +555,7 @@ private struct DonePage: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("Open BadgeBar at login", isOn: $launchAtLogin)
+                    .toggleStyle(.switch)
                     .onChange(of: launchAtLogin) { _, enabled in
                         if enabled {
                             try? SMAppService.mainApp.register()
@@ -639,7 +569,7 @@ private struct DonePage: View {
             }
             .padding(16)
             .frame(width: 420, alignment: .leading)
-            .glassSurface(cornerRadius: 16)
+            .contentCard()
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 40)

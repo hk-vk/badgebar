@@ -39,17 +39,16 @@ final class BadgeMonitor: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: max(0.5, interval), repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
-        timer?.tolerance = 0.2
+        // Generous tolerance lets macOS batch this wake-up with others.
+        timer?.tolerance = interval * 0.3
     }
 
     func refresh() {
-        let access = DockReader.access()
+        let (access, latest) = DockReader.read()
         let trusted = access == .granted
         if trusted != isTrusted { isTrusted = trusted }
         if (access == .needsRelaunch) != needsRelaunch { needsRelaunch = access == .needsRelaunch }
         guard trusted else { return }
-
-        let latest = DockReader.read()
         if latest != entries { entries = latest }
     }
 }

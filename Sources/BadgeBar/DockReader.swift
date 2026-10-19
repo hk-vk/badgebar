@@ -27,54 +27,66 @@ enum DockReader {
 
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
+    /// One pass over the Dock: whether access works, and every app tile if it does.
+    ///
     /// Checks access by actually talking to the Dock, since `AXIsProcessTrusted` alone can
     /// report a grant that hasn't taken effect for this process yet.
-    static func access() -> Access {
-        guard let dock = NSRunningApplication
-            .runningApplications(withBundleIdentifier: "com.apple.dock").first
-        else { return isTrusted ? .granted : .denied }
+    static func read() -> (access: Access, entries: [DockEntry]) {
+        guard let dock = dockElement() else { return (isTrusted ? .granted : .denied, []) }
 
         var value: AnyObject?
-        let result = AXUIElementCopyAttributeValue(
-            AXUIElementCreateApplication(dock.processIdentifier), kAXChildrenAttribute as CFString, &value
-        )
-        switch result {
+        switch AXUIElementCopyAttributeValue(dock, kAXChildrenAttribute as CFString, &value) {
         case .success:
-            return .granted
+            break
         case .apiDisabled:
-            return isTrusted ? .needsRelaunch : .denied
+            return (isTrusted ? .needsRelaunch : .denied, [])
         default:
-            return isTrusted ? .granted : .denied
+            // The Dock may have restarted; look it up again next time.
+            dockApp = nil
+            return (isTrusted ? .granted : .denied, [])
         }
+
+        var entries: [DockEntry] = []
+        for list in (value as? [AXUIElement]) ?? [] {
+            for item in children(of: list) {
+                // One round trip per tile instead of one per attribute.
+                var values: CFArray?
+                guard
+                    AXUIElementCopyMultipleAttributeValues(item, itemAttributes, [], &values) == .success,
+                    let fields = values as? [AnyObject], fields.count == 4,
+                    fields[0] as? String == "AXApplicationDockItem",
+                    let url = fields[1] as? URL,
+                    let bundleID = bundleID(for: url)
+                else { continue }
+
+                let label = fields[2] as? String
+                let badge = label.flatMap { $0.isEmpty ? nil : Badge(label: $0) }
+                let name = fields[3] as? String ?? url.deletingPathExtension().lastPathComponent
+                entries.append(DockEntry(name: name, bundleID: bundleID, url: url, badge: badge))
+            }
+        }
+        return (.granted, entries)
+    }
+
+    private static let itemAttributes = [
+        kAXSubroleAttribute, kAXURLAttribute, "AXStatusLabel", kAXTitleAttribute,
+    ] as CFArray
+
+    private static var dockApp: (pid: pid_t, element: AXUIElement)?
+
+    private static func dockElement() -> AXUIElement? {
+        if let dockApp, NSRunningApplication(processIdentifier: dockApp.pid) != nil { return dockApp.element }
+        guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
+            return nil
+        }
+        let element = AXUIElementCreateApplication(dock.processIdentifier)
+        dockApp = (dock.processIdentifier, element)
+        return element
     }
 
     static func requestTrust() {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
-    }
-
-    static func read() -> [DockEntry] {
-        guard let dock = NSRunningApplication
-            .runningApplications(withBundleIdentifier: "com.apple.dock").first
-        else { return [] }
-
-        let root = AXUIElementCreateApplication(dock.processIdentifier)
-        var entries: [DockEntry] = []
-        for list in children(of: root) {
-            for item in children(of: list) {
-                guard
-                    string(item, kAXSubroleAttribute) == "AXApplicationDockItem",
-                    let url = attribute(item, kAXURLAttribute) as? URL,
-                    let bundleID = bundleID(for: url)
-                else { continue }
-
-                let label = string(item, "AXStatusLabel")
-                let badge = label.flatMap { $0.isEmpty ? nil : Badge(label: $0) }
-                let name = string(item, kAXTitleAttribute) ?? url.deletingPathExtension().lastPathComponent
-                entries.append(DockEntry(name: name, bundleID: bundleID, url: url, badge: badge))
-            }
-        }
-        return entries
     }
 
     private static func bundleID(for url: URL) -> String? {
@@ -88,10 +100,6 @@ enum DockReader {
         var value: AnyObject?
         guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
         return value
-    }
-
-    private static func string(_ element: AXUIElement, _ name: String) -> String? {
-        attribute(element, name) as? String
     }
 
     private static func children(of element: AXUIElement) -> [AXUIElement] {
