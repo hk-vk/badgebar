@@ -1,0 +1,52 @@
+import AppKit
+import Combine
+
+/// Polls the Dock for badges and publishes changes.
+@MainActor
+final class BadgeMonitor: ObservableObject {
+    @Published private(set) var entries: [DockEntry] = []
+    @Published private(set) var isTrusted = DockReader.isTrusted
+
+    private var timer: Timer?
+    private var observers: [NSObjectProtocol] = []
+
+    var badges: [String: Badge] {
+        var result: [String: Badge] = [:]
+        for entry in entries {
+            if let badge = entry.badge { result[entry.bundleID] = badge }
+        }
+        return result
+    }
+
+    func start(interval: TimeInterval) {
+        setInterval(interval)
+
+        // Refresh right away when apps launch or quit instead of waiting for the next tick.
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    MainActor.assumeIsolated { self?.refresh() }
+                }
+            })
+        }
+        refresh()
+    }
+
+    func setInterval(_ interval: TimeInterval) {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: max(0.5, interval), repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+        timer?.tolerance = 0.2
+    }
+
+    func refresh() {
+        let trusted = DockReader.isTrusted
+        if trusted != isTrusted { isTrusted = trusted }
+        guard trusted else { return }
+
+        let latest = DockReader.read()
+        if latest != entries { entries = latest }
+    }
+}
