@@ -13,7 +13,8 @@ enum AppIcons {
         return image
     }
 
-    /// The icon drawn in the menu bar for a tracked app, honoring its icon style.
+    /// The icon drawn in the menu bar for a tracked app, honoring its icon style. It's kept as
+    /// a small bitmap at menu bar size, so the menu bar never holds on to full-size icons.
     static func menuBarIcon(for app: TrackedApp) -> NSImage {
         let key = "\(app.bundleID)|\(app.iconStyle.rawValue)|\(app.customIconPath ?? "")"
         if let cached = cache[key] { return cached }
@@ -28,8 +29,24 @@ enum AppIcons {
         case .custom:
             image = app.customIconPath.flatMap(NSImage.init(contentsOfFile:)) ?? base
         }
-        cache[key] = image
-        return image
+        let small = BadgeRenderer.rasterized(image, trimmingMargins: true)
+        cache[key] = small
+        return small
+    }
+
+    /// An untracked app's icon for the menu bar, trimmed and kept small like tracked ones.
+    static func menuBarIcon(for bundleID: String) -> NSImage {
+        let key = "\(bundleID)|auto"
+        if let cached = cache[key] { return cached }
+        let small = BadgeRenderer.rasterized(icon(for: bundleID), trimmingMargins: true)
+        cache[key] = small
+        return small
+    }
+
+    /// Drops full-size icons, keeping only the small menu bar ones. Settings and onboarding
+    /// load dozens of icons for their lists; call this once they close.
+    static func releaseLargeIcons() {
+        cache = cache.filter { $0.key.contains("|") }
     }
 
     static func symbol(_ name: String) -> NSImage {
@@ -45,6 +62,11 @@ enum AppIcons {
 
     static func isRunning(_ bundleID: String) -> Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
+    }
+
+    /// Lowercased bundle IDs of every running app, for checking many apps at once.
+    static func runningBundleIDs() -> Set<String> {
+        Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier?.lowercased() })
     }
 
     static func open(_ bundleID: String) {

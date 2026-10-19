@@ -91,6 +91,118 @@ struct StylePicker: View {
     }
 }
 
+/// The badge attention effects, each previewed playing on a sample icon.
+struct EffectPicker: View {
+    @Binding var effect: BadgeEffect
+    let icon: NSImage
+    let appearance: BadgeAppearance
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach(BadgeEffect.allCases) { option in
+                ChoiceTile(title: option.label, selected: effect == option) {
+                    effect = option
+                } thumbnail: {
+                    preview(option)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func preview(_ option: BadgeEffect) -> some View {
+        if option == .off {
+            Image(nsImage: BadgeRenderer.image(icon: icon, badge: Badge(label: "3"), appearance: appearance))
+        } else {
+            EffectPreview(icon: icon, appearance: appearance, effect: reduceMotion ? .glow : option)
+                .frame(width: 24, height: 22)
+        }
+    }
+}
+
+/// A badge playing its effect on a loop. It redraws only itself, on its own timer, so the
+/// animation never causes SwiftUI to lay out the surrounding form again.
+private struct EffectPreview: NSViewRepresentable {
+    let icon: NSImage
+    let appearance: BadgeAppearance
+    let effect: BadgeEffect
+
+    func makeNSView(context: Context) -> View { View() }
+
+    func updateNSView(_ view: View, context: Context) {
+        let icon = BadgeRenderer.rasterized(icon)
+        view.render = { [appearance, effect] phase in
+            BadgeRenderer.image(icon: icon, badge: Badge(label: "3"), appearance: appearance, effect: effect, phase: phase)
+        }
+    }
+
+    final class View: NSView {
+        var render: ((CGFloat) -> NSImage)? {
+            didSet {
+                frames = [:]
+                needsDisplay = true
+            }
+        }
+        private static let framesPerSecond = 24.0
+        private static let cycle = 0.8
+        private static let loop = 1.15
+        /// Frames drawn so far, replayed on later loops instead of redrawn.
+        private var frames: [Int: NSImage] = [:]
+        private var shownFrame: Int?
+        private var timer: Timer?
+        private let started = Date()
+
+        override var isFlipped: Bool { true }
+
+        // Only animate while on screen.
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            frames = [:]
+            needsDisplay = true
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            timer?.invalidate()
+            timer = nil
+            guard window != nil else { return }
+            let timer = Timer(timeInterval: 1 / Self.framesPerSecond, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.advance() }
+            }
+            timer.tolerance = 0.005
+            RunLoop.main.add(timer, forMode: .common)
+            self.timer = timer
+        }
+
+        /// One cycle, then a short rest, so each tile reads as a repeated glint rather than a
+        /// constant wobble. Redraws only when the frame changes; the rest is all one frame.
+        private var currentFrame: Int {
+            let t = Date().timeIntervalSince(started).truncatingRemainder(dividingBy: Self.loop)
+            let count = Int(Self.cycle * Self.framesPerSecond)
+            return min(Int(t / Self.cycle * Double(count)), count)
+        }
+
+        private func advance() {
+            if currentFrame != shownFrame { needsDisplay = true }
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            let frame = currentFrame
+            shownFrame = frame
+            let count = Int(Self.cycle * Self.framesPerSecond)
+            guard let render else { return }
+            let image = frames[frame] ?? BadgeRenderer.bitmap(in: effectiveAppearance) {
+                render(CGFloat(frame) / CGFloat(count))
+            }
+            frames[frame] = image
+            let origin = NSPoint(x: (bounds.width - image.size.width) / 2, y: (bounds.height - image.size.height) / 2)
+            image.draw(in: NSRect(origin: origin, size: image.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+    }
+}
+
 /// Color circles in the style of System Settings' accent color picker, plus "Other…", which
 /// opens the system color panel.
 struct ColorSwatches: View {
@@ -295,7 +407,7 @@ struct ReorderStrip: View {
         .offset(x: offset(for: index, item: item))
         .zIndex(isDragging ? 1 : 0)
         .contentShape(Rectangle())
-        .help(item.hidden ? "\(item.name) · hidden while nothing is new" : item.name)
+        .help(item.hidden ? "\(item.name) · hidden right now" : item.name)
         .onHover { inside in
             if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
         }

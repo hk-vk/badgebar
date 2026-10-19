@@ -60,6 +60,8 @@ struct SettingsView: View {
             MenuBarPane(store: store, monitor: monitor, select: { router.selection = $0 }) {
                 router.addingApps = true
             }
+        case .appearance:
+            AppearancePane(store: store)
         case .general:
             GeneralPane(store: store, monitor: monitor, openGuide: openGuide)
         }
@@ -69,6 +71,7 @@ struct SettingsView: View {
     private var pageTitle: String {
         switch router.selection {
         case .menuBar, .none: "Menu Bar"
+        case .appearance: "Appearance"
         case .general: "General"
         case let .app(id): store.apps.first { $0.bundleID == id }?.name ?? "BadgeBar"
         case let .group(id): store.groups.first { $0.id == id }?.name ?? "Group"
@@ -117,6 +120,13 @@ private struct Sidebar: View {
                 SidebarSymbol(name: "menubar.rectangle", color: .brand)
             }
             .tag(SidebarItem.menuBar)
+
+            Label {
+                Text("Appearance")
+            } icon: {
+                SidebarSymbol(name: "paintbrush.fill", color: .blue)
+            }
+            .tag(SidebarItem.appearance)
 
             Label {
                 Text("General")
@@ -242,7 +252,7 @@ private struct Sidebar: View {
         switch item {
         case let .app(id): store.apps.removeAll { $0.bundleID == id }
         case let .group(id): store.deleteGroup(id)
-        case .menuBar, .general: return
+        case .menuBar, .appearance, .general: return
         }
         let remaining = rowOrder
         if let index, !remaining.isEmpty {
@@ -253,7 +263,7 @@ private struct Sidebar: View {
     }
 
     private var rowOrder: [SidebarItem] {
-        var rows: [SidebarItem] = [.menuBar, .general]
+        var rows: [SidebarItem] = [.menuBar, .appearance, .general]
         rows += store.apps.filter { $0.groupID == nil }.map { .app($0.bundleID) }
         for group in store.groups {
             rows.append(.group(group.id))
@@ -312,8 +322,11 @@ private struct MenuBarPane: View {
 
     /// Looked up once; scanning installed apps on every redraw would be wasteful.
     @State private var suggestions: [AppInfo] = []
+    @State private var runningTick = 0
 
     var body: some View {
+        // Read so the pane redraws when apps open or quit.
+        let _ = runningTick
         Form {
             Section {
                 if stripItems.isEmpty {
@@ -336,7 +349,24 @@ private struct MenuBarPane: View {
             } header: {
                 Text("Arrange")
             } footer: {
-                FooterNote("Drag icons left or right to arrange them; the menu bar follows. You can also hold ⌘ and drag icons in the menu bar itself.")
+                FooterNote("Drag icons left or right to arrange them; the menu bar follows. Faded icons are hidden right now.")
+            }
+
+            Section {
+                Toggle(isOn: $store.general.hideWhenNotRunning) {
+                    Text("Hide apps that aren't open")
+                    Text("An app's icon disappears when you quit it and comes back when you open it. Icons with a badge always show.")
+                }
+                Toggle(isOn: $store.general.autoShowBadgedApps) {
+                    Text("Show other apps when they have notifications")
+                    Text("Apps you haven't added appear while they have a badge.")
+                }
+                Toggle(isOn: $store.general.showMainIcon) {
+                    Text("Show BadgeBar icon")
+                    Text("Otherwise, open BadgeBar again from Finder or Spotlight to get here.")
+                }
+            } header: {
+                Text("Visibility")
             }
 
             Section {
@@ -402,11 +432,15 @@ private struct MenuBarPane: View {
         .onAppear {
             suggestions = AppCatalog.suggestions().filter { $0.category != .apple }
         }
+        // Redraw the strip and statuses as apps open and quit.
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didLaunchApplicationNotification)) { _ in runningTick += 1 }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didTerminateApplicationNotification)) { _ in runningTick += 1 }
     }
 
     /// Every app and group in menu bar order, drawn the way the menu bar draws them.
     private var stripItems: [ReorderStrip.Item] {
         let badges = store.visibleBadges(monitor.badges)
+        let running = AppIcons.runningBundleIDs()
         let apps = store.apps.filter { $0.groupID == nil }.map { app in
             let appearance = app.appearance.resolved(store.general)
             let badge = badges[app.bundleID]
@@ -414,17 +448,18 @@ private struct MenuBarPane: View {
                 id: "app.\(app.bundleID)",
                 name: app.name,
                 image: BadgeRenderer.image(icon: AppIcons.menuBarIcon(for: app), badge: badge, appearance: appearance),
-                hidden: badge == nil && appearance.emptyBehavior == .hide
+                hidden: !store.shouldShow(badge: badge, appearance: appearance, bundleIDs: [app.bundleID], running: running)
             )
         }
         let groups = store.groups.map { group in
             let appearance = group.appearance.resolved(store.general)
-            let badge = Badge.combine(store.members(of: group).compactMap { badges[$0.bundleID] })
+            let members = store.members(of: group)
+            let badge = Badge.combine(members.compactMap { badges[$0.bundleID] })
             return ReorderStrip.Item(
                 id: "group.\(group.id.uuidString)",
                 name: group.name,
                 image: BadgeRenderer.image(icon: AppIcons.symbol(group.symbol), badge: badge, appearance: appearance),
-                hidden: badge == nil && appearance.emptyBehavior == .hide
+                hidden: !store.shouldShow(badge: badge, appearance: appearance, bundleIDs: members.map(\.bundleID), running: running)
             )
         }
         return apps + groups
@@ -659,6 +694,57 @@ private struct GroupPane: View {
 
 // MARK: - General page
 
+/// How badges look and behave everywhere, unless an app or group overrides it.
+private struct AppearancePane: View {
+    @ObservedObject var store: Store
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("When nothing is new", selection: $store.general.emptyBehavior) {
+                    ForEach(EmptyBehavior.concrete) { Text($0.label).tag($0) }
+                }
+            } header: {
+                Text("Icons")
+            } footer: {
+                FooterNote("Apps and groups can override this on their own pages.")
+            }
+
+            Section {
+                LabeledContent("New badges") {
+                    EffectPicker(effect: $store.general.badgeEffect, icon: sampleIcon, appearance: sampleAppearance)
+                }
+                Toggle("Keep animating until read", isOn: $store.general.repeatBadgeEffect)
+                    .disabled(store.general.badgeEffect == .off)
+            } header: {
+                Text("Animation")
+            } footer: {
+                FooterNote("A badge plays its effect briefly when it appears or its count goes up. Keep animating replays it every six seconds while it's unread. With Reduce Motion on, every effect becomes a gentle glow.")
+            }
+
+            Section {
+                Toggle("Preview notifications on hover", isOn: $store.general.showHoverPreviews)
+                Toggle("Show message text", isOn: $store.general.showMessageContent)
+            } header: {
+                Text("Previews")
+            } footer: {
+                FooterNote("Message text comes from Notification Center and needs Full Disk Access. It's read on your Mac and never leaves it.")
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Appearance")
+    }
+
+    /// The first app in the menu bar, so the animation previews look like the real thing.
+    private var sampleIcon: NSImage {
+        store.apps.first.map(AppIcons.menuBarIcon(for:)) ?? AppIcons.symbol("bubble.left.fill")
+    }
+
+    private var sampleAppearance: BadgeAppearance {
+        store.apps.first?.appearance.resolved(store.general) ?? BadgeAppearance()
+    }
+}
+
 private struct GeneralPane: View {
     @ObservedObject var store: Store
     @ObservedObject var monitor: BadgeMonitor
@@ -698,27 +784,13 @@ private struct GeneralPane: View {
             }
 
             Section {
-                Picker("When nothing is new", selection: $store.general.emptyBehavior) {
-                    ForEach(EmptyBehavior.concrete) { Text($0.label).tag($0) }
-                }
-                Toggle("Show apps automatically when they have notifications", isOn: $store.general.autoShowBadgedApps)
-                Toggle("Always show BadgeBar icon", isOn: $store.general.showMainIcon)
                 Picker("Refresh badges", selection: $store.general.pollInterval) {
                     ForEach(Self.intervals, id: \.1) { Text($0.0).tag($0.1) }
                 }
             } header: {
-                Text("Menu Bar")
+                Text("Performance")
             } footer: {
-                FooterNote("Apps can override what happens when nothing is new on their own pages. Refreshing less often uses a little less energy.")
-            }
-
-            Section {
-                Toggle("Preview notifications on hover", isOn: $store.general.showHoverPreviews)
-                Toggle("Show message text", isOn: $store.general.showMessageContent)
-            } header: {
-                Text("Previews")
-            } footer: {
-                FooterNote("Message text comes from Notification Center and needs Full Disk Access. It's read on your Mac and never leaves it.")
+                FooterNote("Refreshing less often uses a little less energy.")
             }
 
             Section("About") {

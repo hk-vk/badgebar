@@ -18,6 +18,12 @@ final class StatusBarController: NSObject {
         let image: NSImage
         let tooltip: String
         let visible: Bool
+        var badge: Badge? = nil
+        /// Identifies everything that affects how the item looks, so animation frames drawn
+        /// for it can be reused until it changes.
+        var look: AnyHashable? = nil
+        /// Draws the item with an attention effect, for items with a badge.
+        var effect: ((BadgeEffect, CGFloat) -> NSImage)? = nil
     }
 
     /// Extra width around each icon. None: macOS already spaces separate items apart.
@@ -30,6 +36,13 @@ final class StatusBarController: NSObject {
     /// Where the open menu came from, so its items can show a preview from the same icon.
     private var menuSource: NSStatusBarButton?
     private let preview = PreviewPopover()
+    private lazy var effects = BadgeEffects(
+        draw: { [weak self] key, image in
+            guard let item = self?.items[key], item.isVisible else { return }
+            item.button?.image = image
+        },
+        appearance: { [weak self] key in self?.items[key]?.button?.effectiveAppearance }
+    )
 
     private var items: [String: NSStatusItem] = [:]
     private var kinds: [String: Kind] = [:]
@@ -61,15 +74,22 @@ final class StatusBarController: NSObject {
 
         // @Published fires before the value changes, so hop to the next runloop turn
         // and coalesce bursts of changes into one rebuild.
-        Publishers.Merge(
+        // Apps opening and quitting matter when icons hide for apps that aren't open.
+        let workspace = NSWorkspace.shared.notificationCenter
+        Publishers.Merge4(
             store.objectWillChange.map { _ in () },
-            monitor.objectWillChange.map { _ in () }
+            monitor.objectWillChange.map { _ in () },
+            workspace.publisher(for: NSWorkspace.didLaunchApplicationNotification).map { _ in () },
+            workspace.publisher(for: NSWorkspace.didTerminateApplicationNotification).map { _ in () }
         )
         .debounce(for: .milliseconds(50), scheduler: RunLoop.main)
         .sink { [weak self] in self?.rebuild() }
         .store(in: &cancellables)
 
         rebuild()
+        effects.isReady = true
+        // Badges that were there at launch only play when they repeat; pick those up now.
+        if store.general.repeatBadgeEffect { rebuild() }
         watchPointer()
     }
 
@@ -84,42 +104,58 @@ final class StatusBarController: NSObject {
         }
         // Badges the user marked as read stay hidden until the count goes up.
         let badges = store.visibleBadges(monitor.badges)
+        let running = store.general.hideWhenNotRunning ? AppIcons.runningBundleIDs() : []
+        effects.effect = store.general.badgeEffect
+        effects.repeats = store.general.repeatBadgeEffect
         var specs: [Spec] = []
 
         for app in store.apps where app.groupID == nil {
             let badge = badges[app.bundleID]
             let appearance = app.appearance.resolved(store.general)
+            let icon = AppIcons.menuBarIcon(for: app)
             specs.append(Spec(
                 key: "app.\(app.bundleID)",
                 kind: .app(bundleID: app.bundleID, name: app.name, tracked: true),
-                image: BadgeRenderer.image(icon: AppIcons.menuBarIcon(for: app), badge: badge, appearance: appearance),
+                image: BadgeRenderer.image(icon: icon, badge: badge, appearance: appearance),
                 tooltip: tooltip(app.name, badge),
-                visible: badge != nil || appearance.emptyBehavior != .hide
+                visible: store.shouldShow(badge: badge, appearance: appearance, bundleIDs: [app.bundleID], running: running),
+                badge: badge,
+                look: [AnyHashable(app), AnyHashable(appearance), AnyHashable(badge)],
+                effect: badge.map { Self.effectRenderer(icon: icon, badge: $0, appearance: appearance) }
             ))
         }
 
         for group in store.groups {
-            let memberBadges = store.members(of: group).compactMap { badges[$0.bundleID] }
+            let members = store.members(of: group)
+            let memberBadges = members.compactMap { badges[$0.bundleID] }
             let badge = Badge.combine(memberBadges)
             let appearance = group.appearance.resolved(store.general)
+            let icon = AppIcons.symbol(group.symbol)
             specs.append(Spec(
                 key: "group.\(group.id.uuidString)",
                 kind: .group(group.id),
-                image: BadgeRenderer.image(icon: AppIcons.symbol(group.symbol), badge: badge, appearance: appearance),
+                image: BadgeRenderer.image(icon: icon, badge: badge, appearance: appearance),
                 tooltip: tooltip(group.name, badge),
-                visible: badge != nil || appearance.emptyBehavior != .hide
+                visible: store.shouldShow(badge: badge, appearance: appearance, bundleIDs: members.map(\.bundleID), running: running),
+                badge: badge,
+                look: [AnyHashable(group), AnyHashable(appearance), AnyHashable(badge)],
+                effect: badge.map { Self.effectRenderer(icon: icon, badge: $0, appearance: appearance) }
             ))
         }
 
         if store.general.autoShowBadgedApps {
             for entry in monitor.entries where !store.isTracked(entry.bundleID) {
                 guard let badge = badges[entry.bundleID] else { continue }
+                let icon = AppIcons.menuBarIcon(for: entry.bundleID)
                 specs.append(Spec(
                     key: "auto.\(entry.bundleID)",
                     kind: .app(bundleID: entry.bundleID, name: entry.name, tracked: false),
-                    image: BadgeRenderer.image(icon: AppIcons.icon(for: entry.bundleID), badge: badge, appearance: BadgeAppearance()),
+                    image: BadgeRenderer.image(icon: icon, badge: badge, appearance: BadgeAppearance()),
                     tooltip: tooltip(entry.name, badge),
-                    visible: true
+                    visible: true,
+                    badge: badge,
+                    look: [AnyHashable(entry.bundleID), AnyHashable(badge)],
+                    effect: Self.effectRenderer(icon: icon, badge: badge, appearance: BadgeAppearance())
                 ))
             }
         }
@@ -142,6 +178,21 @@ final class StatusBarController: NSObject {
         applyItems(specs)
     }
 
+    /// Draws an item's animation frames. The icon is shrunk to menu bar size on first use,
+    /// so items that never animate don't pay for it.
+    private static func effectRenderer(
+        icon: NSImage,
+        badge: Badge,
+        appearance: BadgeAppearance
+    ) -> (BadgeEffect, CGFloat) -> NSImage {
+        var small: NSImage?
+        return { effect, phase in
+            let icon = small ?? BadgeRenderer.rasterized(icon)
+            small = icon
+            return BadgeRenderer.image(icon: icon, badge: badge, appearance: appearance, effect: effect, phase: phase)
+        }
+    }
+
     private func applyItems(_ specs: [Spec]) {
         let wanted = Set(specs.map(\.key))
         for (key, item) in items where !wanted.contains(key) {
@@ -150,6 +201,7 @@ final class StatusBarController: NSObject {
             items[key] = nil
             kinds[key] = nil
             hoverTrackers[key] = nil
+            effects.remove(key: key)
         }
 
         let order = specs.map(\.key).filter(Self.isOrdered)
@@ -170,7 +222,8 @@ final class StatusBarController: NSObject {
         for spec in specs {
             guard let item = items[spec.key] else { continue }
             kinds[spec.key] = spec.kind
-            item.button?.image = spec.image
+            effects.update(key: spec.key, badge: spec.badge, look: spec.look, render: spec.effect)
+            if !effects.isAnimating(spec.key) { item.button?.image = spec.image }
             // A fixed width that hugs the image. Variable-length items add generous padding on
             // both sides, which spreads several badge icons too far apart.
             item.length = ceil(spec.image.size.width) + Self.itemPadding
@@ -257,12 +310,15 @@ final class StatusBarController: NSObject {
         hoverChanged(to: hit?.key, button: hit?.button)
     }
 
+    private static var isArranging: Bool {
+        NSEvent.modifierFlags.contains(.command) || NSEvent.pressedMouseButtons != 0
+    }
+
     private var hasGeometry: Bool {
         items.values.contains { ($0.button?.window?.frame.height ?? 0) > 0 }
     }
 
     fileprivate func pointer(enteredKey key: String, inside: Bool) {
-        HoverLog.write("tracking \(inside ? "enter" : "exit") \(key) frame=\(items[key]?.button?.window?.frame ?? .zero)") // TEMP-HOVERLOG
         if inside {
             hoverChanged(to: key, button: items[key]?.button)
         } else if hoveredKey == key {
@@ -274,6 +330,11 @@ final class StatusBarController: NSObject {
         guard key != hoveredKey else { return }
         if let old = hoveredKey { preview.hoverEnded(key: old) }
         hoveredKey = key
+        // ⌘-dragging icons around the menu bar passes over them; that isn't hovering.
+        if Self.isArranging {
+            if !preview.isPinned { preview.close() }
+            return
+        }
         guard let key, let button, store.general.showHoverPreviews else { return }
         preview.hoverBegan(key: key, button: button) { [weak self] in
             self?.previewContent(for: key) ?? AnyView(EmptyView())
@@ -415,7 +476,6 @@ final class StatusBarController: NSObject {
     // MARK: - Clicks
 
     @objc private func clicked(_ sender: NSStatusBarButton) {
-        HoverLog.write("click \(sender.identifier?.rawValue ?? "") mouse=\(NSEvent.mouseLocation) frame=\(sender.window?.frame ?? .zero) geometry=\(hasGeometry)") // TEMP-HOVERLOG
         guard let key = sender.identifier?.rawValue else { return }
         let event = NSApp.currentEvent
         guard let kind = kinds[key] else { return }
@@ -650,19 +710,6 @@ private final class HoverTracker: NSResponder {
 
     override func mouseEntered(with event: NSEvent) { controller?.pointer(enteredKey: key, inside: true) }
     override func mouseExited(with event: NSEvent) { controller?.pointer(enteredKey: key, inside: false) }
-}
-
-// TEMP-HOVERLOG: remove once hover is confirmed on macOS 27.
-enum HoverLog {
-    static func write(_ line: String) {
-        let url = URL(fileURLWithPath: NSHomeDirectory() + "/Library/Logs/BadgeBar-hover.log")
-        let data = Data("\(Date()) \(line)\n".utf8)
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile(); handle.write(data); try? handle.close()
-        } else {
-            try? data.write(to: url)
-        }
-    }
 }
 
 /// NSMenuItem that runs a closure when chosen.

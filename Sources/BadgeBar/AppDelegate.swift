@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Darwin
 import SwiftUI
 
 @main
@@ -150,6 +151,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard let self else { return }
             if closing === self.settingsWindow { self.settingsWindow = nil }
             if closing === self.onboardingWindow { self.onboardingWindow = nil }
+        }
+        guard others.isEmpty else { return }
+        // Once the window's views are gone, drop the icons its lists loaded and hand freed
+        // memory back to macOS now rather than whenever it gets around to reclaiming it.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            AppIcons.releaseLargeIcons()
+            malloc_zone_pressure_relief(nil, 0)
         }
     }
 

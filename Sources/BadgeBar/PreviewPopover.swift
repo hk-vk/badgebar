@@ -16,6 +16,7 @@ final class PreviewPopover: NSObject, NSPopoverDelegate {
     private(set) var anchorKey: String?
 
     var isShown: Bool { popover.isShown }
+    var isPinned: Bool { popover.isShown && pinned }
 
     override init() {
         super.init()
@@ -31,6 +32,8 @@ final class PreviewPopover: NSObject, NSPopoverDelegate {
             return
         }
         schedule(after: 0.35) { [weak self] in
+            // A ⌘-drag in the menu bar may have started while waiting.
+            guard !NSEvent.modifierFlags.contains(.command), NSEvent.pressedMouseButtons == 0 else { return }
             self?.show(key: key, button: button, rect: rect, content: content(), pinned: false)
         }
     }
@@ -82,9 +85,32 @@ final class PreviewPopover: NSObject, NSPopoverDelegate {
         popover.contentSize = hosting.fittingSize
         anchorKey = key
         // Showing an already-open popover moves it to the new anchor.
-        // Below the icon. Buttons use flipped coordinates, where the bottom edge is maxY.
-        popover.show(relativeTo: rect ?? button.bounds, of: button, preferredEdge: button.isFlipped ? .maxY : .minY)
+        let anchor = rect ?? button.bounds
+        // On macOS 27, maxY is the edge below the icon; other versions are checked on first use.
+        let edge = Self.belowEdge ?? .maxY
+        popover.show(relativeTo: anchor, of: button, preferredEdge: edge)
+        if Self.belowEdge == nil { learnBelowEdge(tried: edge, anchor: anchor, button: button) }
         watchOutsideClicks()
+    }
+
+    /// The edge that puts the popover below a menu bar icon. Which edge that is depends on
+    /// how the macOS version reports the status button's coordinates, so it's found by
+    /// looking where the first popover actually landed.
+    private static var belowEdge: NSRectEdge?
+
+    private func learnBelowEdge(tried edge: NSRectEdge, anchor: NSRect, button: NSView) {
+        guard let window = button.window, let popoverWindow = popover.contentViewController?.view.window else { return }
+        let icon = window.convertToScreen(button.convert(anchor, to: nil))
+        // Placeholder geometry (zero height) says nothing about where things landed.
+        guard icon.height > 0 else { return }
+        if popoverWindow.frame.maxY <= icon.minY + 2 {
+            Self.belowEdge = edge
+        } else {
+            // It opened over or above the icon: the other edge is the one below.
+            let other: NSRectEdge = edge == .minY ? .maxY : .minY
+            Self.belowEdge = other
+            popover.show(relativeTo: anchor, of: button, preferredEdge: other)
+        }
     }
 
     /// Clicks in other apps close the popover, as with any menu bar popover.
