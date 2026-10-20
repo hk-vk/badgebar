@@ -108,8 +108,8 @@ struct AppGroup: Codable, Identifiable, Hashable {
 }
 
 struct GeneralSettings: Codable, Hashable {
-    /// Show a temporary item for any badged app that isn't explicitly tracked.
-    var autoShowBadgedApps = true
+    /// Show a temporary item for any badged app that isn't explicitly tracked. Opt-in, offered during onboarding.
+    var autoShowBadgedApps = false
     /// Show BadgeBar's own icon in the menu bar. It also appears while permission is missing.
     var showMainIcon = false
     var pollInterval: Double = 1.5

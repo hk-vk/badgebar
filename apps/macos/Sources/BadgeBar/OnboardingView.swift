@@ -384,7 +384,7 @@ private struct AppsPage: View {
             VStack(spacing: 6) {
                 Text("Choose Your Apps")
                     .font(.system(size: 26, weight: .bold))
-                Text("Pick the apps to keep in the menu bar. Others still appear whenever they have something new.")
+                Text("Pick the apps to keep in the menu bar.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -400,6 +400,13 @@ private struct AppsPage: View {
                 layout: .grid
             )
             .padding(.horizontal, 40)
+
+            Toggle(isOn: $store.general.autoShowBadgedApps) {
+                Text("Also show other apps while they have a badge")
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .font(.callout)
 
             HStack(spacing: 12) {
                 Text("Badge style").font(.callout).foregroundStyle(.secondary)

@@ -38,8 +38,8 @@ when there's nothing new, or you can hide them until something arrives.
 **Click to open, right-click to read.** Click an icon to open its app, like the Dock. Right-click
 it to see who wrote and what they said, mark everything as read, or show all its messages.
 
-**Apps you haven't added still show up.** Any app with a badge appears on its own until its badge
-clears, so nothing slips by.
+**Optionally show apps you haven't added.** Turn it on and any app with a badge appears on its own
+until its badge clears, so nothing slips by.
 
 **Arrange them your way.** Drag icons in Settings and the menu bar follows, or ⌘-drag them in the
 menu bar itself. Works alongside Bartender, Ice and Hidden Bar.

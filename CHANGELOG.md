@@ -2,6 +2,10 @@
 
 What changed in each release of BadgeBar. The release workflow copies a version's section into its GitHub release notes, so add one before tagging.
 
+## Unreleased
+
+- **Showing apps you haven't added is now off by default.** Turn it on while choosing your apps during setup, or later under Menu Bar in Settings.
+
 ## 0.2.0
 
 The first public release.
