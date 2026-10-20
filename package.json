@@ -1,0 +1,10 @@
+{
+  "name": "badgebar-monorepo",
+  "private": true,
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build:web": "pnpm --filter web build",
+    "build:mac": "apps/macos/scripts/build-app.sh"
+  }
+}

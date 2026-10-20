@@ -36,19 +36,31 @@ macOS draws app badges on Dock tiles. The Dock exposes each tile through the Acc
 You need Xcode 16 or later and macOS 14 or later.
 
 ```sh
+cd apps/macos
 scripts/create-signing-cert.sh  # once: a local signing identity so permissions survive rebuilds
 scripts/build-app.sh            # build/BadgeBar.app
 scripts/build-app.sh "Developer ID Application: …"   # signed with your identity
 open build/BadgeBar.app
 ```
 
-For development, use `swift build && .build/debug/BadgeBar`. Accessibility permission is then granted to your terminal.
+For development, use `swift build && .build/debug/BadgeBar` in `apps/macos`. Accessibility permission is then granted to your terminal.
 
 > macOS ties privacy permissions to the app's code signature. An ad-hoc signature changes on every build, so a permission granted to one build silently stops working for the next. The switch in System Settings still looks on, and dragging the app in again doesn't fix it. Sign with the local identity from `scripts/create-signing-cert.sh` to avoid this. To clear a stale entry, run `tccutil reset Accessibility io.github.badgebar`.
 
 The app icon is an Icon Composer document, `Resources/AppIcon.icon`; edit it in Icon Composer (Xcode ▸ Open Developer Tool). `scripts/build-app.sh` compiles it, and `scripts/make-icon.sh` re-renders the light and dark PNGs used by the App Icon setting.
 
-## Project layout
+## Repository layout
+
+This is a monorepo with two apps:
+
+| Folder | What's in it |
+| --- | --- |
+| `apps/macos` | The BadgeBar app, a Swift package |
+| `apps/web` | The website, built with Astro, React and Tailwind |
+
+To work on the website, run `pnpm install` once and then `pnpm dev`. Pushing to `main` deploys it to GitHub Pages; turn Pages on in the repository settings with *GitHub Actions* as the source. The site's app icons are in `apps/web/public`.
+
+The main files of the app, in `apps/macos/Sources/BadgeBar`:
 
 | File | Purpose |
 | --- | --- |
