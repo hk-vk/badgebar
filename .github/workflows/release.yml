@@ -1,0 +1,115 @@
+name: Release
+
+# Pushing a tag like v0.3.0 builds and signs the app, publishes a GitHub release with notes from
+# CHANGELOG.md, and points the Homebrew cask at it. Run it by hand to build the branch you pick
+# without publishing, using an existing tag for the version and notes.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag for the version and notes (a dry run, nothing is published)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: xcode-27
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      PUBLISH: ${{ github.event_name == 'push' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Xcode 27.1
+        run: sudo xcode-select -s /Applications/Xcode_27.1.app
+
+      - name: Check the version
+        run: |
+          VERSION="${TAG#v}"
+          PLIST="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' apps/macos/Resources/Info.plist)"
+          if [ "$PLIST" != "$VERSION" ]; then
+            echo "::error::Info.plist says $PLIST but the tag is $TAG"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      # The same self-signed identity as local builds, so permissions carry over between versions.
+      - name: Import the signing identity
+        env:
+          P12: ${{ secrets.BADGEBAR_P12 }}
+          P12_PASSWORD: ${{ secrets.BADGEBAR_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          base64 --decode <<<"$P12" > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/signing.p12"
+
+      - name: Build
+        working-directory: apps/macos
+        run: |
+          scripts/build-app.sh "BadgeBar Local Signing"
+          lipo -archs build/BadgeBar.app/Contents/MacOS/BadgeBar
+          codesign --verify --strict build/BadgeBar.app
+
+      - name: Zip and write the release notes
+        run: |
+          ZIP="BadgeBar-$VERSION.zip"
+          ditto -c -k --keepParent apps/macos/build/BadgeBar.app "$ZIP"
+          apps/macos/scripts/release-notes.sh "$TAG" "$ZIP" > notes.md
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+          echo "SHA256=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the build (dry run)
+        if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BadgeBar-${{ env.VERSION }}
+          path: |
+            ${{ env.ZIP }}
+            notes.md
+
+      - name: Publish the release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG" "$ZIP" --title "BadgeBar $VERSION" --notes-file notes.md --verify-tag
+
+      - name: Check out the Homebrew tap
+        if: env.PUBLISH == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: hk-vk/homebrew-tap
+          ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
+          path: tap
+
+      - name: Update the cask
+        if: env.PUBLISH == 'true'
+        working-directory: tap
+        run: |
+          sed -i '' -E \
+            -e "s/^  version \".*\"/  version \"$VERSION\"/" \
+            -e "s/^  sha256 \".*\"/  sha256 \"$SHA256\"/" \
+            Casks/badgebar.rb
+          git diff
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "BadgeBar $VERSION"
+          git push
+
+      - name: Remove the signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
