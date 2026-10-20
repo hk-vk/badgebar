@@ -6,10 +6,10 @@ import StatusItem from '../components/StatusItem';
 import { Effects, Groups } from '../components/Customize';
 import { asset, iconFor } from '../components/store';
 
-// The deploy workflow sets this to the GitHub repository's URL.
-const repo = import.meta.env.PUBLIC_REPO_URL || '#';
-const download = repo === '#' ? '#' : `${repo}/releases/latest`;
-const source = repo === '#' ? '#' : `${repo}#build`;
+// The deploy workflow sets this from the repository it runs in, so forks link to themselves.
+const repo = import.meta.env.PUBLIC_REPO_URL || 'https://github.com/hk-vk/badgebar';
+const download = `${repo}/releases/latest`;
+const source = `${repo}#build`;
 
 const facts = [
   { term: 'Made for a hidden Dock', detail: 'Works alongside menu bar managers like Bartender and Ice. ⌘-drag the icons to put them where you like.' },
