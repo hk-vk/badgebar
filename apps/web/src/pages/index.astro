@@ -18,6 +18,8 @@ const source = `${repo}#build`;
 const site = Astro.site ?? 'https://badgebar.hari.works';
 const description = "BadgeBar puts your apps' unread counts in the macOS menu bar, so you can hide the Dock and still see what's new.";
 const ogImage = new URL(asset('og.png'), site).href;
+const ogAlt = 'BadgeBar: hide the Dock, keep the badges. A menu bar with unread counts on three app icons.';
+const title = 'BadgeBar: unread badges in your Mac menu bar';
 
 const facts = [
   { term: 'Made for a hidden Dock', detail: 'Works alongside menu bar managers like Bartender and Ice. ⌘-drag the icons to put them where you like.' },
@@ -31,17 +33,21 @@ const facts = [
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BadgeBar</title>
+    <title>{title}</title>
     <meta name="description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={new URL(asset(''), site).href} />
-    <meta property="og:title" content="BadgeBar" />
+    <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:width" content="1280" />
     <meta property="og:image:height" content="640" />
-    <meta property="og:image:alt" content="BadgeBar: hide the Dock, keep the badges. A menu bar with unread counts on three app icons." />
+    <meta property="og:image:alt" content={ogAlt} />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={ogAlt} />
     <link rel="icon" href={asset('badgebar-light.png')} media="(prefers-color-scheme: light)" />
     <link rel="icon" href={asset('badgebar-dark.png')} media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
