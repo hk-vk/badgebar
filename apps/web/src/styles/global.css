@@ -287,6 +287,154 @@ button.status-item:hover {
   background: color-mix(in srgb, #2a2f38 70%, transparent);
 }
 
+/* Badge effects, timed like the app: three 0.8 s cycles when a count goes up. */
+
+.fx-pulse {
+  transform-origin: 100% 0;
+  animation:
+    badge-pop 320ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    fx-pulse 0.8s ease-in-out 3;
+}
+@keyframes fx-pulse {
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.fx-glow {
+  animation:
+    badge-pop 320ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    fx-glow 0.8s ease-in-out 3;
+}
+@keyframes fx-glow {
+  50% {
+    filter: drop-shadow(0 0 2.5px rgb(255 59 48 / 0.95)) drop-shadow(0 0 1px rgb(255 59 48 / 0.9));
+  }
+}
+
+/* A slanted band of light that only lands on the icon and the badge, not the bar around them. */
+.fx-shimmer {
+  background-image: linear-gradient(105deg, transparent 38%, rgb(255 255 255 / 0.85) 50%, transparent 62%);
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 150% 0;
+  animation:
+    badge-pop 320ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    fx-sweep 0.8s ease-in-out 3;
+}
+.shimmer-icon {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-mask: var(--mask) center / contain no-repeat;
+  mask: var(--mask) center / contain no-repeat;
+  animation: fx-sweep 0.8s ease-in-out 3;
+}
+/* The text badge is just a number: the light sweeps through its glyphs. */
+span.fx-shimmer:not(.absolute):not(.shimmer-icon) {
+  -webkit-background-clip: text;
+  background-clip: text;
+  background-color: currentColor;
+  -webkit-text-fill-color: transparent;
+}
+@keyframes fx-sweep {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+/* Items folding into a group, and the group unfolding back */
+.status-item {
+  max-width: 64px;
+  overflow: visible;
+}
+.status-item[data-hidden] {
+  max-width: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.snippet-bar .status-item {
+  transition:
+    max-width 320ms cubic-bezier(0.645, 0.045, 0.355, 1),
+    padding 320ms cubic-bezier(0.645, 0.045, 0.355, 1),
+    opacity 200ms ease,
+    background-color 120ms ease;
+}
+
+/* One small control inside a feature snippet */
+
+.snippet-stack {
+  flex-direction: column;
+  gap: 30px;
+}
+.mini-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-ink) 7%, transparent);
+}
+.mini-seg button {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-muted);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+.mini-seg button:hover {
+  color: var(--color-ink);
+}
+.mini-seg button[aria-checked='true'] {
+  background: var(--color-raised);
+  color: var(--color-ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+[data-theme='dark'] .mini-seg button[aria-checked='true'] {
+  background: color-mix(in srgb, var(--color-ink) 18%, transparent);
+}
+.mini-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-ink) 14%, transparent);
+  transition: background-color 180ms ease;
+}
+.switch span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  transition: transform 220ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+.switch[aria-checked='true'] {
+  background: #34c759;
+}
+.switch[aria-checked='true'] span {
+  transform: translateX(16px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
