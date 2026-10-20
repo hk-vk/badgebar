@@ -1,0 +1,18 @@
+// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "BadgeBar",
+    platforms: [.macOS(.v14)],
+    targets: [
+        .executableTarget(
+            name: "BadgeBar",
+            path: "Sources/BadgeBar"
+        ),
+        .testTarget(
+            name: "BadgeBarTests",
+            dependencies: ["BadgeBar"],
+            path: "Tests/BadgeBarTests"
+        ),
+    ]
+)
