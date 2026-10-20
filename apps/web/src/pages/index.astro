@@ -1,0 +1,208 @@
+---
+import '@fontsource-variable/bricolage-grotesque';
+import '../styles/global.css';
+import Screen from '../components/Screen';
+import StatusItem from '../components/StatusItem';
+import { asset, iconFor } from '../components/store';
+
+// The deploy workflow sets this to the GitHub repository's URL.
+const repo = import.meta.env.PUBLIC_REPO_URL || '#';
+const download = repo === '#' ? '#' : `${repo}/releases/latest`;
+const source = repo === '#' ? '#' : `${repo}#build`;
+
+const facts = [
+  { term: 'Made for a hidden Dock', detail: 'Works alongside menu bar managers like Bartender and Ice. ⌘-drag the icons to put them where you like.' },
+  { term: 'Stays on your Mac', detail: 'No account and no tracking. BadgeBar never connects to the internet.' },
+  { term: 'Free and open source', detail: 'MIT licensed. Read the code, or build it yourself.' },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BadgeBar</title>
+    <meta name="description" content="BadgeBar puts your apps' unread counts in the macOS menu bar, so you can hide the Dock and still see what's new." />
+    <link rel="icon" href={asset('badgebar-light.png')} media="(prefers-color-scheme: light)" />
+    <link rel="icon" href={asset('badgebar-dark.png')} media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <script is:inline>
+      // Runs before the page paints, so a saved Light or Dark choice never flashes the other one.
+      (() => {
+        const media = matchMedia('(prefers-color-scheme: dark)');
+        const saved = () => {
+          try {
+            return localStorage.getItem('theme') ?? 'system';
+          } catch {
+            return 'system';
+          }
+        };
+        const apply = (choice) => {
+          const theme = choice === 'system' ? (media.matches ? 'dark' : 'light') : choice;
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        };
+        apply(saved());
+        media.addEventListener('change', () => apply(saved()));
+        window.setTheme = (choice) => {
+          try {
+            choice === 'system' ? localStorage.removeItem('theme') : localStorage.setItem('theme', choice);
+          } catch {}
+          apply(choice);
+          return choice;
+        };
+        window.savedTheme = saved;
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="mx-auto flex h-16 max-w-[1120px] items-center justify-between px-5 sm:px-8">
+      <a href="#" class="flex items-center gap-2.5 font-semibold">
+        <img src={asset('badgebar-light.png')} alt="" class="size-7 dark:hidden" />
+        <img src={asset('badgebar-dark.png')} alt="" class="hidden size-7 dark:block" />
+        BadgeBar
+      </a>
+      <nav class="flex items-center gap-5 text-[15px]">
+        <a href={repo} class="text-muted hover:text-ink">GitHub</a>
+        <a href={download} class="btn btn-primary btn-small">Download</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="mx-auto max-w-[1120px] px-5 pt-10 text-center sm:px-8 sm:pt-14">
+        <h1 class="display mx-auto max-w-[16ch] text-[clamp(2.6rem,6.4vw,4.75rem)]">
+          Hide the Dock. Keep the badges.
+        </h1>
+        <p class="mx-auto mt-6 max-w-[46ch] text-[18px] leading-[1.55] text-muted sm:text-[20px]">
+          Apps show unread counts on their Dock icons, which is no help once the Dock is hidden. BadgeBar
+          puts those counts in your menu bar, one icon per app, so nothing slips by.
+        </p>
+        <div class="mt-8 flex flex-wrap justify-center gap-3">
+          <a class="btn btn-primary" href={download}>Download for Mac</a>
+          <a class="btn btn-secondary" href={repo}>View on GitHub</a>
+        </div>
+        <p class="mt-4 text-sm text-muted">Free and open source. Needs macOS 14 or later.</p>
+
+        <div class="mt-12 text-left sm:mt-14">
+          <Screen client:load />
+        </div>
+        <p class="mt-4 text-sm text-muted">Click the icons in the menu bar above to try it.</p>
+      </section>
+
+      <section class="mx-auto max-w-[1120px] px-5 pt-28 sm:px-8 sm:pt-36">
+        <h2 class="display max-w-[18ch] text-[clamp(2rem,4.2vw,3rem)]">Everything new, one glance away</h2>
+        <div class="mt-12 grid gap-12 md:grid-cols-3 md:gap-8">
+          <article>
+            <div class="snippet" aria-hidden="true">
+              <div class="snippet-bar">
+                <StatusItem label="" count={3}><img src={iconFor('slack')} alt="" class="size-[17px]" /></StatusItem>
+                <StatusItem label="" count={12}><img src={iconFor('whatsapp')} alt="" class="size-[17px]" /></StatusItem>
+                <StatusItem label="" count={2}><img src={iconFor('messages')} alt="" class="size-[17px]" /></StatusItem>
+                <StatusItem label="" count={0}><img src={iconFor('mail')} alt="" class="size-[17px]" /></StatusItem>
+              </div>
+            </div>
+            <h3 class="mt-6 text-lg font-semibold">Every app gets its own icon</h3>
+            <p class="mt-2 max-w-[38ch] leading-relaxed text-muted">
+              Any app that shows a badge on the Dock can have a menu bar icon, with its count on top. Icons
+              fade when there's nothing new.
+            </p>
+          </article>
+
+          <article>
+            <div class="snippet" aria-hidden="true">
+              <div class="w-[78%] rounded-xl bg-raised p-2.5 text-left shadow-[0_0_0_0.5px_rgb(0_0_0/0.12),0_10px_24px_-10px_rgb(0_0_0/0.25)]">
+                <div class="flex gap-2.5">
+                  <img src={iconFor('whatsapp')} alt="" class="size-7 flex-none" />
+                  <div class="min-w-0 text-[12.5px]">
+                    <div class="truncate font-semibold">Weekend trip</div>
+                    <div class="truncate text-muted">Sam: I booked the cabin!</div>
+                  </div>
+                </div>
+                <div class="mt-2 flex gap-2.5">
+                  <img src={iconFor('whatsapp')} alt="" class="size-7 flex-none" />
+                  <div class="min-w-0 text-[12.5px]">
+                    <div class="truncate font-semibold">Leo</div>
+                    <div class="truncate text-muted">Running 5 minutes late</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <h3 class="mt-6 text-lg font-semibold">Read before you switch</h3>
+            <p class="mt-2 max-w-[38ch] leading-relaxed text-muted">
+              Right-click an icon to see who wrote and what they said. Click it to open the app, just like
+              the Dock.
+            </p>
+          </article>
+
+          <article>
+            <div class="snippet" aria-hidden="true">
+              <div class="snippet-bar">
+                <StatusItem label="" count={4}><img src={iconFor('messages')} alt="" class="size-[17px]" /></StatusItem>
+                <StatusItem label="" count={4} style="text"><img src={iconFor('messages')} alt="" class="size-[17px]" /></StatusItem>
+                <StatusItem label="" count={4} style="dot"><img src={iconFor('messages')} alt="" class="size-[17px]" /></StatusItem>
+              </div>
+            </div>
+            <h3 class="mt-6 text-lg font-semibold">Set it up your way</h3>
+            <p class="mt-2 max-w-[38ch] leading-relaxed text-muted">
+              Show the count, the number beside the icon, or just a dot. Group several apps under one icon
+              with their total.
+            </p>
+          </article>
+        </div>
+
+        <dl class="mt-24 grid gap-10 border-t border-line pt-12 md:grid-cols-3 md:gap-8">
+          {
+            facts.map((fact) => (
+              <div>
+                <dt class="font-semibold">{fact.term}</dt>
+                <dd class="mt-2 max-w-[36ch] leading-relaxed text-muted">{fact.detail}</dd>
+              </div>
+            ))
+          }
+        </dl>
+      </section>
+
+      <section class="mx-auto max-w-[1120px] px-5 py-28 text-center sm:px-8 sm:py-36">
+        <img src={asset('badgebar-light.png')} alt="" class="mx-auto size-24 dark:hidden" />
+        <img src={asset('badgebar-dark.png')} alt="" class="mx-auto hidden size-24 dark:block" />
+        <h2 class="display mt-8 text-[clamp(2rem,4.2vw,3rem)]">Get BadgeBar</h2>
+        <p class="mx-auto mt-4 max-w-[40ch] text-lg leading-relaxed text-muted">
+          Open it, follow the short setup guide, and your badges are in the menu bar within a minute.
+        </p>
+        <div class="mt-8 flex flex-wrap justify-center gap-3">
+          <a class="btn btn-primary" href={download}>Download for Mac</a>
+          <a class="btn btn-secondary" href={source}>Build from source</a>
+        </div>
+        <p class="mt-4 text-sm text-muted">Free. Needs macOS 14 or later.</p>
+      </section>
+    </main>
+
+    <footer class="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-4 border-t border-line px-5 py-8 text-sm text-muted sm:px-8">
+      <p>BadgeBar is open source under the MIT license.</p>
+      <div class="flex items-center gap-5">
+        <p>App icons shown belong to their owners.</p>
+        <div class="theme-switch" role="radiogroup" aria-label="Appearance">
+          <button type="button" role="radio" data-theme-choice="system" aria-label="Match system" title="Match system">
+            <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M5.5 14h5M8 11.5V14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
+          </button>
+          <button type="button" role="radio" data-theme-choice="light" aria-label="Light" title="Light">
+            <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
+          </button>
+          <button type="button" role="radio" data-theme-choice="dark" aria-label="Dark" title="Dark">
+            <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" /></svg>
+          </button>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      const buttons = document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]');
+      const mark = (choice: string) =>
+        buttons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.themeChoice === choice)));
+      const w = window as unknown as { setTheme: (c: string) => string; savedTheme: () => string };
+      mark(w.savedTheme());
+      buttons.forEach((b) => b.addEventListener('click', () => mark(w.setTheme(b.dataset.themeChoice!))));
+    </script>
+  </body>
+</html>
