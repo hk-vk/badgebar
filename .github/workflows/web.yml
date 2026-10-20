@@ -28,8 +28,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:web
         env:
-          SITE_URL: https://${{ github.repository_owner }}.github.io
-          SITE_BASE: /${{ github.event.repository.name }}/
+          # Served from its own domain (set in the repo's Pages settings), so from the root.
+          SITE_URL: https://badgebar.hari.works
+          SITE_BASE: /
           PUBLIC_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
       - uses: actions/upload-pages-artifact@v3
         with:
