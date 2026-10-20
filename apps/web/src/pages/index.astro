@@ -3,6 +3,7 @@ import '@fontsource-variable/bricolage-grotesque';
 import '../styles/global.css';
 import Screen from '../components/Screen';
 import StatusItem from '../components/StatusItem';
+import { Effects, Groups } from '../components/Customize';
 import { asset, iconFor } from '../components/store';
 
 // The deploy workflow sets this to the GitHub repository's URL.
@@ -79,10 +80,21 @@ const facts = [
           puts those counts in your menu bar, one icon per app, so nothing slips by.
         </p>
         <div class="mt-8 flex flex-wrap justify-center gap-3">
-          <a class="btn btn-primary" href={download}>Download for Mac</a>
-          <a class="btn btn-secondary" href={repo}>View on GitHub</a>
+          <a class="btn btn-primary" href={download}>
+            <svg viewBox="0 0 20 16" class="h-4 w-5" aria-hidden="true">
+              <rect x="3.2" y="2" width="13.6" height="9.6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5" />
+              <path d="M1 12.9h18l-.7 1.3a1 1 0 0 1-.9.5H2.6a1 1 0 0 1-.9-.5Z" fill="currentColor" />
+            </svg>
+            Download for Mac
+          </a>
+          <a class="btn btn-secondary" href={repo}>
+            <svg viewBox="0 0 16 16" class="size-[17px]" aria-hidden="true">
+              <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+            </svg>
+            View on GitHub
+          </a>
         </div>
-        <p class="mt-4 text-sm text-muted">Free and open source. Needs macOS 14 or later.</p>
+        <p class="mt-4 text-sm text-muted">Free and open source. Ready in under a minute. Needs macOS 14 or later.</p>
 
         <div class="mt-12 text-left sm:mt-14">
           <Screen client:load />
@@ -92,8 +104,8 @@ const facts = [
 
       <section class="mx-auto max-w-[1120px] px-5 pt-28 sm:px-8 sm:pt-36">
         <h2 class="display max-w-[18ch] text-[clamp(2rem,4.2vw,3rem)]">Everything new, one glance away</h2>
-        <div class="mt-12 grid gap-12 md:grid-cols-3 md:gap-8">
-          <article>
+        <div class="mt-12 grid gap-x-8 gap-y-14 md:grid-cols-6">
+          <article class="md:col-span-2">
             <div class="snippet" aria-hidden="true">
               <div class="snippet-bar">
                 <StatusItem label="" count={3}><img src={iconFor('slack')} alt="" class="size-[17px]" /></StatusItem>
@@ -109,7 +121,7 @@ const facts = [
             </p>
           </article>
 
-          <article>
+          <article class="md:col-span-2">
             <div class="snippet" aria-hidden="true">
               <div class="w-[78%] rounded-xl bg-raised p-2.5 text-left shadow-[0_0_0_0.5px_rgb(0_0_0/0.12),0_10px_24px_-10px_rgb(0_0_0/0.25)]">
                 <div class="flex gap-2.5">
@@ -135,7 +147,7 @@ const facts = [
             </p>
           </article>
 
-          <article>
+          <article class="md:col-span-2">
             <div class="snippet" aria-hidden="true">
               <div class="snippet-bar">
                 <StatusItem label="" count={4}><img src={iconFor('messages')} alt="" class="size-[17px]" /></StatusItem>
@@ -145,8 +157,24 @@ const facts = [
             </div>
             <h3 class="mt-6 text-lg font-semibold">Set it up your way</h3>
             <p class="mt-2 max-w-[38ch] leading-relaxed text-muted">
-              Show the count, the number beside the icon, or just a dot. Group several apps under one icon
-              with their total.
+              Show the count on the icon, the number beside it, or just a dot. Set it for every app at once
+              or one app at a time.
+            </p>
+          </article>
+          <article class="md:col-span-3">
+            <Effects client:visible />
+            <h3 class="mt-6 text-lg font-semibold">Notice what just arrived</h3>
+            <p class="mt-2 max-w-[44ch] leading-relaxed text-muted">
+              When a count goes up, its badge pulses, glows or shimmers for a moment. It can keep repeating
+              until you read it.
+            </p>
+          </article>
+
+          <article class="md:col-span-3">
+            <Groups client:visible />
+            <h3 class="mt-6 text-lg font-semibold">Group apps into one icon</h3>
+            <p class="mt-2 max-w-[44ch] leading-relaxed text-muted">
+              Put related apps under one icon that shows their total. Give it any symbol, or your own image.
             </p>
           </article>
         </div>
@@ -168,7 +196,8 @@ const facts = [
         <img src={asset('badgebar-dark.png')} alt="" class="mx-auto hidden size-24 dark:block" />
         <h2 class="display mt-8 text-[clamp(2rem,4.2vw,3rem)]">Get BadgeBar</h2>
         <p class="mx-auto mt-4 max-w-[40ch] text-lg leading-relaxed text-muted">
-          Open it, follow the short setup guide, and your badges are in the menu bar within a minute.
+          No account and nothing to configure. Allow one permission, and every app with a badge shows up
+          in your menu bar.
         </p>
         <div class="mt-8 flex flex-wrap justify-center gap-3">
           <a class="btn btn-primary" href={download}>Download for Mac</a>

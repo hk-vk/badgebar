@@ -11,6 +11,7 @@ export const APPS = [
 
 export type AppId = (typeof APPS)[number]['id'];
 export type BadgeStyle = 'circle' | 'text' | 'dot';
+export type BadgeEffect = 'off' | 'pulse' | 'glow' | 'shimmer';
 
 /** Made-up recent messages for the dropdowns, newest first. */
 export const MESSAGES: Record<AppId, { from: string; text: string }[]> = {
