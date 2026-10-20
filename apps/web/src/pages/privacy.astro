@@ -1,0 +1,67 @@
+---
+import Legal from '../layouts/Legal.astro';
+
+const repo = import.meta.env.PUBLIC_REPO_URL || 'https://github.com/hk-vk/badgebar';
+---
+
+<Legal
+  title="Privacy Policy"
+  description="BadgeBar collects nothing. It runs entirely on your Mac and never connects to the internet."
+  updated="October 20, 2026"
+>
+  <p>
+    BadgeBar collects nothing about you. It runs entirely on your Mac, has no account, and never
+    connects to the internet. There are no analytics, no crash reports and no servers.
+  </p>
+
+  <h2>What the app reads</h2>
+  <ul>
+    <li>
+      <strong>Badges on the Dock.</strong> With Accessibility permission, BadgeBar reads the unread
+      counts macOS shows on Dock icons, so it can show them in the menu bar.
+    </li>
+    <li>
+      <strong>Notification history, if you allow it.</strong> With Full Disk Access, BadgeBar reads
+      the notifications macOS has already saved on your Mac, to show recent messages when you
+      right-click an icon. This is optional. Without it, you still get the counts.
+    </li>
+  </ul>
+  <p>Both are read on your Mac, used only to draw the menu bar, and never sent anywhere.</p>
+
+  <h2>What the app stores</h2>
+  <p>BadgeBar keeps a small amount of data on your Mac, in your user account:</p>
+  <ul>
+    <li>
+      Your settings, which apps you added, and what you marked as read, in
+      <code>~/Library/Preferences/io.github.hk-vk.badgebar.plist</code>.
+    </li>
+    <li>
+      Copies of images you choose as icons, in
+      <code>~/Library/Application Support/BadgeBar/</code>.
+    </li>
+  </ul>
+  <p>
+    To remove all of it, quit BadgeBar and delete those two locations, or run
+    <code>brew uninstall --zap --cask badgebar</code> if you installed it with Homebrew.
+  </p>
+
+  <h2>This website</h2>
+  <p>
+    This site has no cookies, analytics or trackers. If you pick Light or Dark in the footer, the
+    choice is saved in your browser and never leaves it. The site is hosted on GitHub Pages, and
+    downloads come from GitHub Releases, so GitHub may log technical details like your IP address
+    as described in the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.
+    Homebrew has its own <a href="https://docs.brew.sh/Analytics">analytics policy</a> for installs made through it.
+  </p>
+
+  <h2>Changes</h2>
+  <p>
+    If BadgeBar ever starts handling data differently, this page will change first, and the date at
+    the top will show when.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions about privacy are welcome as an <a href={`${repo}/issues`}>issue on GitHub</a>.
+  </p>
+</Legal>

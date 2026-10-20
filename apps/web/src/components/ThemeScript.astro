@@ -1,0 +1,32 @@
+---
+// Applies the saved Light or Dark choice. Goes in <head>, so the page never flashes the other one.
+---
+
+<script is:inline>
+  // Runs before the page paints, so a saved Light or Dark choice never flashes the other one.
+  (() => {
+    const media = matchMedia('(prefers-color-scheme: dark)');
+    const saved = () => {
+      try {
+        return localStorage.getItem('theme') ?? 'system';
+      } catch {
+        return 'system';
+      }
+    };
+    const apply = (choice) => {
+      const theme = choice === 'system' ? (media.matches ? 'dark' : 'light') : choice;
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.style.colorScheme = theme;
+    };
+    apply(saved());
+    media.addEventListener('change', () => apply(saved()));
+    window.setTheme = (choice) => {
+      try {
+        choice === 'system' ? localStorage.removeItem('theme') : localStorage.setItem('theme', choice);
+      } catch {}
+      apply(choice);
+      return choice;
+    };
+    window.savedTheme = saved;
+  })();
+</script>

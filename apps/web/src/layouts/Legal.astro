@@ -1,0 +1,46 @@
+---
+// A plain text page, such as the privacy policy and terms.
+import '@fontsource-variable/bricolage-grotesque';
+import '../styles/global.css';
+import ThemeScript from '../components/ThemeScript.astro';
+import Footer from '../components/Footer.astro';
+import { asset } from '../components/store';
+
+interface Props {
+  title: string;
+  description: string;
+  updated: string;
+}
+const { title, description, updated } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} | BadgeBar</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href={asset('badgebar-light.png')} media="(prefers-color-scheme: light)" />
+    <link rel="icon" href={asset('badgebar-dark.png')} media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <ThemeScript />
+  </head>
+  <body>
+    <header class="mx-auto flex h-16 max-w-[1120px] items-center px-5 sm:px-8">
+      <a href={asset('')} class="flex items-center gap-2.5 font-semibold">
+        <img src={asset('badgebar-light.png')} alt="" class="size-7 dark:hidden" />
+        <img src={asset('badgebar-dark.png')} alt="" class="hidden size-7 dark:block" />
+        BadgeBar
+      </a>
+    </header>
+
+    <main class="legal mx-auto max-w-[680px] px-5 pt-12 pb-24 sm:px-8 sm:pt-16">
+      <h1 class="display">{title}</h1>
+      <p class="legal-updated">Last updated {updated}</p>
+      <slot />
+    </main>
+
+    <Footer />
+  </body>
+</html>

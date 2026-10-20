@@ -1,0 +1,56 @@
+---
+import Legal from '../layouts/Legal.astro';
+import { asset } from '../components/store';
+
+const repo = import.meta.env.PUBLIC_REPO_URL || 'https://github.com/hk-vk/badgebar';
+---
+
+<Legal
+  title="Terms of Use"
+  description="BadgeBar is free and open source under the MIT license, provided as is."
+  updated="October 20, 2026"
+>
+  <p>
+    BadgeBar is free and open source. By downloading or using it, you agree to these terms. They
+    are short because there is little to say: you don't pay anything, you don't sign up, and
+    nothing you do in the app reaches anyone else.
+  </p>
+
+  <h2>License</h2>
+  <p>
+    BadgeBar's code is released under the <a href={`${repo}/blob/main/LICENSE`}>MIT license</a>.
+    You may use, copy, change and share it, including for commercial use, as long as you keep the
+    license notice.
+  </p>
+
+  <h2>No warranty</h2>
+  <p>
+    BadgeBar is provided as is, without any warranty. It may have bugs, show a count that is out
+    of date, or miss a notification, so don't rely on it for anything critical. To the extent the
+    law allows, the author is not liable for any damage or loss that comes from using it.
+  </p>
+
+  <h2>Permissions</h2>
+  <p>
+    BadgeBar asks for Accessibility access, and optionally Full Disk Access, so it can read badges
+    and recent notifications on your Mac. You can turn either off at any time in System Settings ▸
+    Privacy &amp; Security. The <a href={asset('privacy/')}>Privacy Policy</a> explains what it reads and
+    keeps.
+  </p>
+
+  <h2>Other apps and trademarks</h2>
+  <p>
+    BadgeBar shows information from other apps but isn't made by, affiliated with or endorsed by
+    any of them. App names and icons belong to their owners. Mac and macOS are trademarks of Apple
+    Inc.
+  </p>
+
+  <h2>Changes</h2>
+  <p>
+    These terms may change as BadgeBar does. The date at the top shows the latest version, and
+    using BadgeBar after a change means you accept it.
+  </p>
+
+  <h2>Contact</h2>
+  <p>Questions are welcome as an <a href={`${repo}/issues`}>issue on GitHub</a>.</p>
+</Legal>

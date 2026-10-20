@@ -304,6 +304,56 @@ button.status-item:hover {
   text-decoration-color: currentColor;
 }
 
+/* Privacy policy and terms */
+
+.legal h1 {
+  font-size: clamp(2.25rem, 6vw, 3rem);
+}
+.legal .legal-updated {
+  margin-top: 12px;
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+.legal h2 {
+  margin-top: 40px;
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.legal p,
+.legal ul {
+  margin-top: 14px;
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+.legal .legal-updated + p {
+  margin-top: 32px;
+}
+.legal ul {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.legal li + li {
+  margin-top: 8px;
+}
+.legal a {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-ink) 30%, transparent);
+  text-underline-offset: 3px;
+}
+.legal a:hover {
+  text-decoration-color: currentColor;
+}
+.legal code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+}
+
 /* Theme switch in the footer */
 
 .theme-switch {
