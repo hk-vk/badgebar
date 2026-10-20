@@ -11,7 +11,7 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.github.badgebar</string>
+	<string>io.github.hk-vk.badgebar</string>
 	<key>CFBundleName</key>
 	<string>BadgeBar</string>
 	<key>CFBundlePackageType</key>

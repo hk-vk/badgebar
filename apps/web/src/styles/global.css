@@ -221,6 +221,89 @@ button.status-item:hover {
   color: var(--color-muted);
 }
 
+/* The install command, the main download step */
+
+.install {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  max-width: 100%;
+  padding: 0 14px 0 20px;
+  border-radius: 999px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 14.5px;
+  transition:
+    transform 120ms ease-out,
+    opacity 150ms ease;
+}
+.install:hover {
+  opacity: 0.9;
+}
+.install:active {
+  transform: scale(0.97);
+}
+.install code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.install-prompt {
+  opacity: 0.5;
+}
+/* On a phone the command wraps rather than getting cut off. */
+@media (max-width: 479px) {
+  .install {
+    height: auto;
+    padding: 12px 10px 12px 18px;
+    border-radius: 18px;
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: left;
+  }
+  .install code {
+    white-space: normal;
+  }
+}
+.install-state {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-paper) 14%, transparent);
+}
+.install-state svg {
+  grid-area: 1 / 1;
+  transition:
+    opacity 150ms ease,
+    transform 200ms cubic-bezier(0.19, 1, 0.22, 1);
+}
+.install-done {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.install[data-copied] .install-copy {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.install[data-copied] .install-done {
+  opacity: 1;
+  transform: none;
+}
+.link {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-ink) 30%, transparent);
+  text-underline-offset: 3px;
+}
+.link:hover {
+  text-decoration-color: currentColor;
+}
+
 /* Theme switch in the footer */
 
 .theme-switch {

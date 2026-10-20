@@ -1,0 +1,39 @@
+---
+// The main install step: the Homebrew command, copied with one click.
+export const command = 'brew install --cask hk-vk/tap/badgebar';
+---
+
+<button type="button" class="install" data-copy={command} aria-label={`Copy the install command: ${command}`}>
+  <span class="install-prompt" aria-hidden="true">$</span>
+  <code><span class="whitespace-nowrap">brew install --cask</span> <span class="whitespace-nowrap">hk-vk/tap/badgebar</span></code>
+  <span class="install-state" aria-hidden="true">
+    <svg viewBox="0 0 16 16" class="install-copy size-4">
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.4" />
+      <path d="M10.5 3.6V3.3A1.8 1.8 0 0 0 8.7 1.5H4.3a1.8 1.8 0 0 0-1.8 1.8v4.4a1.8 1.8 0 0 0 1.8 1.8h.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+    </svg>
+    <svg viewBox="0 0 16 16" class="install-done size-4">
+      <path d="m3 8.5 3.2 3L13 4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </span>
+  <span class="sr-only" role="status" data-copy-status></span>
+</button>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((button) => {
+    let timer: ReturnType<typeof setTimeout>;
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy!);
+      } catch {
+        return;
+      }
+      button.dataset.copied = '';
+      button.querySelector('[data-copy-status]')!.textContent = 'Copied';
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        delete button.dataset.copied;
+        button.querySelector('[data-copy-status]')!.textContent = '';
+      }, 1600);
+    });
+  });
+</script>
