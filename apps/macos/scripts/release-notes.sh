@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prints the GitHub release notes for a tag: its CHANGELOG.md section, how to install, and the
+# Prints the GitHub release notes, one line per paragraph since GitHub keeps line breaks for a tag: its CHANGELOG.md section, how to install, and the
 # app's commits since the previous tag.
 #
 # Usage: scripts/release-notes.sh v0.2.0 [path/to/BadgeBar-0.2.0.zip]
@@ -32,9 +32,7 @@ brew install --cask hk-vk/tap/badgebar
 
 Already installed with Homebrew? Run \`brew upgrade --cask badgebar\`. Your permissions carry over.
 
-Or download BadgeBar-$VERSION.zip below and move BadgeBar to Applications. BadgeBar isn't
-notarized, so the first time you open a downloaded copy, click *Open Anyway* in System Settings ▸
-Privacy & Security.
+Or download BadgeBar-$VERSION.zip below and move BadgeBar to Applications. BadgeBar isn't notarized, so the first time you open a downloaded copy, click *Open Anyway* in System Settings ▸ Privacy & Security.
 EOF
 if [ -n "$ZIP" ]; then
   printf '\nSHA-256: `%s`\n' "$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
