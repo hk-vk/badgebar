@@ -42,6 +42,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .sink { [monitor] in monitor.setInterval($0) }
             .store(in: &cancellables)
 
+        let history = NotificationHistory.shared
+        store.$general
+            .map { ($0.historyLimit, $0.showMessageContent) }
+            .removeDuplicates { $0 == $1 }
+            .sink { limit, enabled in
+                history.limit = limit
+                history.isEnabled = enabled
+            }
+            .store(in: &cancellables)
+        history.start()
+
         statusBar = StatusBarController(
             store: store,
             monitor: monitor,

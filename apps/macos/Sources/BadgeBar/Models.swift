@@ -125,6 +125,8 @@ struct GeneralSettings: Codable, Hashable {
     var appIcon: AppIconChoice = .automatic
     /// Include notification titles and bodies in previews (needs Full Disk Access).
     var showMessageContent = true
+    /// How many notifications Notification History keeps per app.
+    var historyLimit = 10
     var hasCompletedOnboarding = false
 
     init() {}
@@ -142,6 +144,7 @@ struct GeneralSettings: Codable, Hashable {
         repeatBadgeEffect = try c.decodeIfPresent(Bool.self, forKey: .repeatBadgeEffect) ?? d.repeatBadgeEffect
         appIcon = try c.decodeIfPresent(AppIconChoice.self, forKey: .appIcon) ?? d.appIcon
         showMessageContent = try c.decodeIfPresent(Bool.self, forKey: .showMessageContent) ?? d.showMessageContent
+        historyLimit = try c.decodeIfPresent(Int.self, forKey: .historyLimit) ?? d.historyLimit
         hasCompletedOnboarding = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? d.hasCompletedOnboarding
     }
 }

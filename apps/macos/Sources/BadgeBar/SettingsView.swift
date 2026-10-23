@@ -708,6 +708,8 @@ private struct GeneralPane: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var hasFullDiskAccess = Permissions.hasFullDiskAccess
+    @State private var confirmingClearHistory = false
+    private static let historyLimits = [5, 10, 25, 50, 100]
 
     private static let intervals: [(String, Double)] = [
         ("Every half second", 0.5), ("Every second", 1), ("Every 1.5 seconds", 1.5),
@@ -740,6 +742,26 @@ private struct GeneralPane: View {
                 Text("Permissions")
             } footer: {
                 FooterNote("Message text is read from Notification Center on your Mac and never leaves it.")
+            }
+
+            Section {
+                Picker("Keep per app", selection: $store.general.historyLimit) {
+                    ForEach(Self.historyLimits, id: \.self) { Text("Last \($0)").tag($0) }
+                }
+                LabeledContent("Saved notifications") {
+                    Button("Clear History…") { confirmingClearHistory = true }
+                        .nativeButton()
+                }
+            } header: {
+                Text("Notification History")
+            } footer: {
+                FooterNote("BadgeBar keeps its own copy of recent notifications, so they stay in history after you clear them or the app removes them. Stored only on this Mac.")
+            }
+            .disabled(!hasFullDiskAccess || !store.general.showMessageContent)
+            .confirmationDialog("Clear notification history?", isPresented: $confirmingClearHistory) {
+                Button("Clear History", role: .destructive) { NotificationHistory.shared.clear() }
+            } message: {
+                Text("Notifications still in Notification Center will be saved again.")
             }
 
             Section {

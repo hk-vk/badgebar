@@ -312,8 +312,16 @@ final class StatusBarController: NSObject {
     }
 
     /// History includes messages already marked as read and reaches further back.
+    /// History comes from BadgeBar's own copy, since Notification Center forgets messages
+    /// once they're cleared or withdrawn.
     private func viewerModel(for kind: Kind, history: Bool = false) -> ViewerModel {
         let limit = history ? 200 : 60
+        if history { NotificationHistory.shared.sync() }
+        func load(_ bundleIDs: [String]?, limit: Int) -> [DeliveredNotification] {
+            history
+                ? Array(NotificationHistory.shared.notes(for: bundleIDs).prefix(limit))
+                : NotificationDatabase.recent(for: bundleIDs, limit: limit)
+        }
         let badges = monitor.badges
         let canRead = Permissions.hasFullDiskAccess
         let showContent = store.general.showMessageContent
@@ -333,7 +341,7 @@ final class StatusBarController: NSObject {
 
         switch kind {
         case let .app(bundleID, name, _):
-            let notes = fetch ? NotificationDatabase.recent(for: [bundleID], limit: limit) : []
+            let notes = fetch ? load([bundleID], limit: limit) : []
             return ViewerModel(
                 scope: .app(bundleID: bundleID),
                 title: name,
@@ -346,7 +354,7 @@ final class StatusBarController: NSObject {
         case let .group(id):
             let group = store.groups.first { $0.id == id }
             let members = group.map(store.members(of:)) ?? []
-            let notes = fetch ? NotificationDatabase.recent(for: members.map(\.bundleID), limit: limit) : []
+            let notes = fetch ? load(members.map(\.bundleID), limit: limit) : []
             let list = apps(members.map { ($0.bundleID, $0.name) }, notes: notes)
             return ViewerModel(
                 scope: .group(symbol: group?.symbol ?? "tray.full"),
@@ -359,7 +367,7 @@ final class StatusBarController: NSObject {
 
         case .main:
             // Every app with a badge or recent notifications, newest activity first.
-            let notes = fetch ? NotificationDatabase.recent(for: nil, limit: history ? 300 : 120) : []
+            let notes = fetch ? load(nil, limit: history ? 1000 : 120) : []
             var seen = Set<String>()
             var list: [(bundleID: String, name: String)] = []
             for entry in monitor.entries where entry.badge != nil && seen.insert(entry.bundleID.lowercased()).inserted {
@@ -373,7 +381,8 @@ final class StatusBarController: NSObject {
                 title: "Notifications",
                 apps: sortByActivity(apps(list, notes: notes)),
                 canReadNotifications: canRead,
-                showsContent: showContent
+                showsContent: showContent,
+                includesRead: history
             )
         }
     }
