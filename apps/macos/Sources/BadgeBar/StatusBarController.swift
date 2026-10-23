@@ -519,16 +519,27 @@ final class StatusBarController: NSObject {
                 store.track(bundleID: bundleID, name: name)
             })
         }
-        addBadgeBarItems(to: menu, historyKey: key)
+        addBadgeBarItems(to: menu, historyKey: key, apps: [(bundleID, name)])
         return menu
     }
 
-    /// BadgeBar's own commands, at the bottom of every icon's menu.
-    private func addBadgeBarItems(to menu: NSMenu, historyKey key: String) {
+    /// Commands at the bottom of every icon's menu: BadgeBar's own, then a Quit item for each
+    /// of the icon's apps that's running. BadgeBar itself quits from the main menu.
+    private func addBadgeBarItems(to menu: NSMenu, historyKey key: String, apps: [(bundleID: String, name: String)]) {
         menu.addItem(.separator())
         menu.addItem(historyItem("Notification History…", key: key))
         menu.addItem(ClosureMenuItem("Settings…", key: ",", symbol: "gearshape") { [openSettings] in openSettings(nil) })
-        menu.addItem(ClosureMenuItem("Quit BadgeBar", key: "q", symbol: "power") { NSApp.terminate(nil) })
+
+        let running = apps.compactMap { app in
+            NSRunningApplication.runningApplications(withBundleIdentifier: app.bundleID).first.map { (app.name, $0) }
+        }
+        guard !running.isEmpty else { return }
+        menu.addItem(.separator())
+        for (name, process) in running {
+            menu.addItem(ClosureMenuItem("Quit \(name)", key: running.count == 1 ? "q" : "", symbol: "power") {
+                process.terminate()
+            })
+        }
     }
 
     private func groupMenu(key: String, id: UUID) -> NSMenu {
@@ -552,7 +563,7 @@ final class StatusBarController: NSObject {
             })
         }
         menu.addItem(ClosureMenuItem("Customize Group…", symbol: "slider.horizontal.3") { [openSettings] in openSettings(.group(id)) })
-        addBadgeBarItems(to: menu, historyKey: key)
+        addBadgeBarItems(to: menu, historyKey: key, apps: members.map { ($0.bundleID, $0.name) })
         return menu
     }
 
