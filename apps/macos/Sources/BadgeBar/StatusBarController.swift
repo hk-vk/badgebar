@@ -536,7 +536,7 @@ final class StatusBarController: NSObject {
         guard !running.isEmpty else { return }
         menu.addItem(.separator())
         for (name, process) in running {
-            menu.addItem(ClosureMenuItem("Quit \(name)", key: running.count == 1 ? "q" : "", symbol: "power") {
+            menu.addItem(ClosureMenuItem("Quit \(name)", symbol: "power") {
                 process.terminate()
             })
         }
