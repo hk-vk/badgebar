@@ -72,8 +72,14 @@ final class NotificationHistory {
         return notes.filter { ids.contains($0.bundleID.lowercased()) }
     }
 
-    func clear() {
-        notes = []
+    /// Forgets saved notifications for the given apps, or for every app when nil.
+    func clear(_ bundleIDs: [String]? = nil) {
+        if let bundleIDs {
+            let ids = Set(bundleIDs.map { $0.lowercased() })
+            notes.removeAll { ids.contains($0.bundleID.lowercased()) }
+        } else {
+            notes = []
+        }
         save()
     }
 

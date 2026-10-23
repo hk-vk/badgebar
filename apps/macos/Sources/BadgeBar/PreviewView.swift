@@ -22,6 +22,8 @@ struct ViewerModel {
     let apps: [AppNotifications]
     let canReadNotifications: Bool
     let showsContent: Bool
+    /// Saved messages to show, dimmed, when the app has nothing new.
+    var recent: [DeliveredNotification] = []
     /// History: also lists notifications already marked as read.
     var includesRead = false
 }
@@ -182,7 +184,20 @@ struct NotificationViewer: View {
             if let app = model.apps.first {
                 let notes = visible(app)
                 if notes.isEmpty {
-                    EmptyState(text: showContent ? "No recent notifications" : "Open the app to read new messages.")
+                    let recent = showContent ? model.recent.filter { !store.cleared.ids.contains($0.id) } : []
+                    EmptyState(text: showContent ? (recent.isEmpty ? "No recent notifications" : "No new notifications") : "Open the app to read new messages.")
+                    if !recent.isEmpty {
+                        Text("Recent")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+                        VStack(spacing: 8) {
+                            ForEach(recent.prefix(3)) { note in
+                                card(note, app: app, unread: false, showIcon: false)
+                            }
+                        }
+                        .opacity(0.6)
+                    }
                 } else {
                     let shown = showAll ? notes : Array(notes.prefix(Self.initialCount))
                     FittedScrollView(maxHeight: 480) {

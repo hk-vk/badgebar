@@ -348,6 +348,7 @@ final class StatusBarController: NSObject {
                 apps: apps([(bundleID, name)], notes: notes),
                 canReadNotifications: canRead,
                 showsContent: showContent,
+                recent: fetch && !history ? recentHistory(for: bundleID) : [],
                 includesRead: history
             )
 
@@ -532,8 +533,8 @@ final class StatusBarController: NSObject {
         return menu
     }
 
-    /// Commands at the bottom of every icon's menu: BadgeBar's own, then a Quit item for each
-    /// of the icon's apps that's running. BadgeBar itself quits from the main menu.
+    /// Commands at the bottom of every icon's menu: BadgeBar's own, then Quit for the icon's
+    /// running apps (Quit All for a group). BadgeBar itself quits from the main menu.
     private func addBadgeBarItems(to menu: NSMenu, historyKey key: String, apps: [(bundleID: String, name: String)]) {
         menu.addItem(.separator())
         menu.addItem(historyItem("Notification History…", key: key))
@@ -544,11 +545,10 @@ final class StatusBarController: NSObject {
         }
         guard !running.isEmpty else { return }
         menu.addItem(.separator())
-        for (name, process) in running {
-            menu.addItem(ClosureMenuItem("Quit \(name)", symbol: "power") {
-                process.terminate()
-            })
-        }
+        let title = running.count == 1 ? "Quit \(running[0].0)" : "Quit All"
+        menu.addItem(ClosureMenuItem(title, symbol: "power") {
+            running.forEach { $0.1.terminate() }
+        })
     }
 
     private func groupMenu(key: String, id: UUID) -> NSMenu {
@@ -606,6 +606,7 @@ final class StatusBarController: NSObject {
             let empty = NSMenuItem(title: badge == nil ? "No new messages" : "Open \(name) to read new messages", action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
+            addRecentItems(bundleID: bundleID, limit: min(limit, Self.recentLimit), to: menu, historyKey: historyKey)
             return
         }
 
@@ -617,6 +618,29 @@ final class StatusBarController: NSObject {
         if remaining > 0 {
             menu.addItem(historyItem("Show All Messages…", key: historyKey, symbol: "list.bullet"))
         }
+    }
+
+    private static let recentLimit = 3
+
+    /// With nothing new, the last few messages from BadgeBar's history, dimmed, so the menu
+    /// isn't empty after the app (or the user) cleared them from Notification Center.
+    private func addRecentItems(bundleID: String, limit: Int, to menu: NSMenu, historyKey: String) {
+        let recent = recentHistory(for: bundleID)
+        guard !recent.isEmpty else { return }
+        menu.addItem(.sectionHeader(title: "Recent"))
+        for note in recent.prefix(limit) {
+            menu.addItem(NotificationMenuItem(note, icon: AppIcons.icon(for: bundleID), unread: false, dimmed: true) {
+                AppIcons.open(bundleID)
+            })
+        }
+        if recent.count > limit {
+            menu.addItem(historyItem("Show All Messages…", key: historyKey, symbol: "list.bullet"))
+        }
+    }
+
+    /// Saved messages for an app, minus ones the user dismissed.
+    private func recentHistory(for bundleID: String) -> [DeliveredNotification] {
+        NotificationHistory.shared.notes(for: [bundleID]).filter { !store.cleared.ids.contains($0.id) }
     }
 
     /// Opens the notification preview under the menu's icon, including messages already read.

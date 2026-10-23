@@ -5,11 +5,11 @@ import AppKit
 final class NotificationMenuItem: NSMenuItem {
     private let handler: () -> Void
 
-    init(_ note: DeliveredNotification, icon: NSImage, unread: Bool, handler: @escaping () -> Void) {
+    init(_ note: DeliveredNotification, icon: NSImage, unread: Bool, dimmed: Bool = false, handler: @escaping () -> Void) {
         self.handler = handler
         super.init(title: note.title, action: #selector(run), keyEquivalent: "")
         target = self
-        view = NotificationRowView(note: note, icon: icon, unread: unread) { [weak self] in
+        view = NotificationRowView(note: note, icon: icon, unread: unread, dimmed: dimmed) { [weak self] in
             self?.menu?.cancelTracking()
             self?.handler()
         }
@@ -32,9 +32,11 @@ private final class NotificationRowView: NSView {
     private let time: String
     private let icon: NSImage
     private let unread: Bool
+    /// Drawn faded, for messages already gone from Notification Center.
+    private let dimmed: Bool
     private let activate: () -> Void
 
-    init(note: DeliveredNotification, icon: NSImage, unread: Bool, activate: @escaping () -> Void) {
+    init(note: DeliveredNotification, icon: NSImage, unread: Bool, dimmed: Bool, activate: @escaping () -> Void) {
         let heading = note.title.isEmpty ? note.subtitle : note.title
         title = heading.isEmpty ? "Notification" : heading
         message = [note.title.isEmpty ? "" : note.subtitle, note.body]
@@ -43,6 +45,7 @@ private final class NotificationRowView: NSView {
         time = NotificationCard.time(note.date)
         self.icon = icon
         self.unread = unread
+        self.dimmed = dimmed
         self.activate = activate
         super.init(frame: .zero)
         autoresizingMask = .width
@@ -91,7 +94,7 @@ private final class NotificationRowView: NSView {
             NSColor.selectedContentBackgroundColor.setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 1), xRadius: 8, yRadius: 8).fill()
         }
-        let primary: NSColor = highlighted ? .white : .labelColor
+        let primary: NSColor = highlighted ? .white : dimmed ? .secondaryLabelColor : .labelColor
         let secondary: NSColor = highlighted ? .white.withAlphaComponent(0.8) : .secondaryLabelColor
         let right = bounds.width - 14
         let top = Self.vPadding + 1
@@ -102,7 +105,7 @@ private final class NotificationRowView: NSView {
         }
         icon.draw(
             in: NSRect(x: 21, y: top, width: Self.iconSize, height: Self.iconSize),
-            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil
+            from: .zero, operation: .sourceOver, fraction: dimmed && !highlighted ? 0.5 : 1, respectFlipped: true, hints: nil
         )
 
         let timeAttrs: [NSAttributedString.Key: Any] = [.font: Self.timeFont, .foregroundColor: secondary]

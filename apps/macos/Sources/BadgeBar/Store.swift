@@ -182,10 +182,11 @@ final class Store: ObservableObject {
         return bundleIDs.contains { running.contains($0.lowercased()) }
     }
 
-    /// Takes an app out of the menu bar, along with its copied custom image.
+    /// Takes an app out of the menu bar, along with its copied custom image and saved history.
     func removeApp(_ bundleID: String) {
         AppIcons.removeCustomIcon(apps.first { $0.bundleID == bundleID }?.customIconPath)
         apps.removeAll { $0.bundleID == bundleID }
+        NotificationHistory.shared.clear([bundleID])
     }
 
     func deleteGroup(_ id: UUID) {
