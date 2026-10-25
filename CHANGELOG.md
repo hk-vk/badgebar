@@ -2,8 +2,12 @@
 
 What changed in each release of BadgeBar. The release workflow copies a version's section into its GitHub release notes, so add one before tagging.
 
-## Unreleased
+## 0.3.0
 
+- **Notification history that sticks around.** BadgeBar keeps its own copy of recent messages, so they're still there after you clear them in Notification Center. Choose how many to keep per app, or clear them, in Settings.
+- **Recent messages when nothing's new.** An app's menu and preview show its last few messages, dimmed, instead of coming up empty. Notification History sits right under them.
+- **Quit apps from their icons.** Each icon's menu has a Quit item for its app, and groups get Quit All.
+- **Icons keep their place in the menu bar.** An icon hidden while its app isn't open used to come back at the far left, inside a menu bar hider's hidden section, after a restart or when the app relaunched.
 - **Showing apps you haven't added is now off by default.** Turn it on while choosing your apps during setup, or later under Menu Bar in Settings.
 
 ## 0.2.0
