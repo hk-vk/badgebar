@@ -218,8 +218,45 @@ final class StatusBarController: NSObject {
             item.length = ceil(spec.image.size.width) + Self.itemPadding
             item.button?.toolTip = spec.tooltip
             item.button?.setAccessibilityLabel(spec.tooltip)
-            if item.isVisible != spec.visible { item.isVisible = spec.visible }
+            if item.isVisible != spec.visible { Self.setVisible(spec.visible, item) }
         }
+    }
+
+    // MARK: - Remembered positions
+
+    /// Copies of each item's spot in the menu bar, by autosave name.
+    private static let savedPositionsKey = "savedStatusItemPositions"
+
+    private static func positionKey(_ name: String) -> String {
+        "NSStatusItem Preferred Position \(name)"
+    }
+
+    /// macOS forgets where an item sat when it's hidden, then shows it again at the far left,
+    /// inside a menu bar hider's hidden section. Keeps a copy of the spot while the item is
+    /// hidden and hands it back just before showing the item again.
+    private static func setVisible(_ visible: Bool, _ item: NSStatusItem) {
+        defer { item.isVisible = visible }
+        guard let name = item.autosaveName else { return }
+        if visible {
+            restorePosition(of: name)
+        } else if let position = UserDefaults.standard.object(forKey: positionKey(name)) as? Double {
+            let defaults = UserDefaults.standard
+            var saved = defaults.dictionary(forKey: savedPositionsKey) as? [String: Double] ?? [:]
+            if saved[name] != position {
+                saved[name] = position
+                defaults.set(saved, forKey: savedPositionsKey)
+            }
+        }
+    }
+
+    /// Puts back the saved spot for an item macOS no longer has one for.
+    private static func restorePosition(of name: String) {
+        let defaults = UserDefaults.standard
+        let key = positionKey(name)
+        guard defaults.object(forKey: key) == nil,
+              let position = (defaults.dictionary(forKey: savedPositionsKey) as? [String: Double])?[name]
+        else { return }
+        defaults.set(position, forKey: key)
     }
 
     // MARK: - Order
@@ -278,7 +315,8 @@ final class StatusBarController: NSObject {
 
     private func makeItem(key: String, autosaveName: String) -> NSStatusItem {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        // macOS remembers each item's spot by this name.
+        // macOS remembers each item's spot by this name, and reads it when the name is set.
+        Self.restorePosition(of: autosaveName)
         item.autosaveName = autosaveName
         if let button = item.button {
             button.identifier = NSUserInterfaceItemIdentifier(key)
