@@ -37,6 +37,51 @@ final class IconProportionsTests: XCTestCase {
         return CGFloat(maxX - minX + 1) / CGFloat(maxY - minY + 1)
     }
 
+    /// How much of an image's longest side its visible shape covers, from 0 to 1.
+    private func visibleLongestSide(of image: NSImage) -> CGFloat {
+        let side = 160
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: side * 4, bitsPerPixel: 32
+        )!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        let scale = CGFloat(side) / max(image.size.width, image.size.height)
+        image.draw(in: NSRect(x: 0, y: 0, width: image.size.width * scale, height: image.size.height * scale))
+        NSGraphicsContext.restoreGraphicsState()
+
+        var minX = side, minY = side, maxX = -1, maxY = -1
+        for y in 0..<side {
+            for x in 0..<side where rep.bitmapData![(y * side + x) * 4 + 3] > 128 {
+                minX = min(minX, x); maxX = max(maxX, x)
+                minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        return CGFloat(max(maxX - minX, maxY - minY) + 1) / CGFloat(side)
+    }
+
+    /// The visible area of an image, in square points.
+    private func visibleArea(of image: NSImage) -> CGFloat {
+        let scale: CGFloat = 16
+        let width = Int(image.size.width * scale), height = Int(image.size.height * scale)
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: width * 4, bitsPerPixel: 32
+        )!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+
+        var pixels = 0
+        for y in 0..<height {
+            for x in 0..<width where rep.bitmapData![(y * width + x) * 4 + 3] > 128 { pixels += 1 }
+        }
+        return CGFloat(pixels) / (scale * scale)
+    }
+
     private func menuBarImage(_ icon: NSImage) -> NSImage {
         var appearance = BadgeAppearance()
         appearance.emptyBehavior = .show
@@ -55,6 +100,28 @@ final class IconProportionsTests: XCTestCase {
         for (width, height, ratio) in [(200.0, 100.0, 2.0), (100.0, 200.0, 0.5), (100.0, 100.0, 1.0)] {
             let small = BadgeRenderer.rasterized(image(width: width, height: height), trimmingMargins: true)
             XCTAssertEqual(visibleRatio(of: menuBarImage(small)), ratio, accuracy: 0.12, "\(width)x\(height)")
+        }
+    }
+
+    func testTrimmedSymbolsFillTheIconSpaceAndKeepTheirProportions() throws {
+        for name in ["envelope.fill", "message.fill", "briefcase.fill"] {
+            let symbol = try XCTUnwrap(NSImage(systemSymbolName: name, accessibilityDescription: nil))
+            symbol.isTemplate = true
+            let trimmed = BadgeRenderer.trimmedSymbol(symbol)
+            XCTAssertTrue(trimmed.isTemplate, name)
+            // The longest side now spans the whole image, with no margin left.
+            XCTAssertEqual(visibleLongestSide(of: trimmed), 1, accuracy: 0.05, name)
+            XCTAssertEqual(visibleRatio(of: menuBarImage(trimmed)), visibleRatio(of: symbol), accuracy: 0.12, name)
+        }
+    }
+
+    /// Trimming removes only empty space, so the shape must cover the same area as before.
+    func testTrimmingSymbolsDoesNotClipTheirShape() throws {
+        for name in ["envelope.fill", "message.fill", "bubble.left.fill", "bubble.fill", "briefcase.fill"] {
+            let symbol = try XCTUnwrap(NSImage(systemSymbolName: name, accessibilityDescription: nil))
+            symbol.isTemplate = true
+            let area = visibleArea(of: symbol)
+            XCTAssertEqual(visibleArea(of: BadgeRenderer.trimmedSymbol(symbol)) / area, 1, accuracy: 0.03, name)
         }
     }
 
