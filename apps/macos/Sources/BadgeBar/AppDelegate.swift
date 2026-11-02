@@ -160,6 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         let closing = notification.object as? NSWindow
+        if closing === settingsWindow { ColorPanelSession.shared.end() }
         let others = [settingsWindow, onboardingWindow].compactMap { $0 }.filter { $0 !== closing && $0.isVisible }
         if others.isEmpty {
             DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
