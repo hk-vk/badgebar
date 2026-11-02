@@ -522,6 +522,8 @@ private struct AppPane: View {
                     StylePicker(appearance: $app.appearance, icon: AppIcons.menuBarIcon(for: app))
                 }
                 LabeledContent("Color") { ColorSwatches(hex: $app.appearance.colorHex) }
+                LabeledContent("New Activity") { ColorSwatches(hex: $app.appearance.activityColor) }
+                    .help("The dot for apps that show new activity without a number, like Slack's unread channels")
                 Picker("When nothing is new", selection: $app.appearance.emptyBehavior) {
                     EmptyBehaviorOptions(global: store.general.emptyBehavior)
                 }
@@ -666,6 +668,8 @@ private struct GroupPane: View {
                     StylePicker(appearance: $group.appearance, icon: AppIcons.menuBarIcon(for: group))
                 }
                 LabeledContent("Color") { ColorSwatches(hex: $group.appearance.colorHex) }
+                LabeledContent("New Activity") { ColorSwatches(hex: $group.appearance.activityColor) }
+                    .help("The dot for apps that show new activity without a number, like Slack's unread channels")
                 Picker("When nothing is new", selection: $group.appearance.emptyBehavior) {
                     EmptyBehaviorOptions(global: store.general.emptyBehavior)
                 }

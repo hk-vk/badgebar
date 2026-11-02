@@ -74,7 +74,16 @@ enum IconStyle: String, Codable, CaseIterable, Identifiable {
 struct BadgeAppearance: Codable, Hashable {
     var style: BadgeStyle = .circle
     var colorHex: String = "#FF3B30"
+    /// The color of a badge without a number. Unset until chosen, so settings saved by older
+    /// versions still load.
+    var activityColorHex: String?
     var emptyBehavior: EmptyBehavior = .useDefault
+
+    /// A badge without a number only signals quiet activity, so it's gray unless chosen otherwise.
+    var activityColor: String {
+        get { activityColorHex ?? "#8E8E93" }
+        set { activityColorHex = newValue }
+    }
 
     /// Replaces "Use Default" with the global rule.
     func resolved(_ general: GeneralSettings) -> BadgeAppearance {

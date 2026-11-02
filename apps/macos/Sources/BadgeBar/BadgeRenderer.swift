@@ -19,9 +19,8 @@ enum BadgeRenderer {
         effect: BadgeEffect = .off,
         phase: CGFloat = 0
     ) -> NSImage {
-        // A badge without a number (Slack's unread-channel dot, for example) only signals
-        // quiet activity, so it's drawn in a muted gray instead of the badge color.
-        let color = badge?.count == nil ? NSColor.secondaryLabelColor : NSColor(hex: appearance.colorHex) ?? .systemRed
+        // A badge without a number (Slack's unread-channel dot, for example) has its own color.
+        let color = NSColor(hex: badge?.count == nil ? appearance.activityColor : appearance.colorHex) ?? .systemRed
         let dimmed = badge == nil && appearance.emptyBehavior == .dim
         let iconRect = NSRect(x: 0, y: (barHeight - iconSize) / 2, width: iconSize, height: iconSize)
 
