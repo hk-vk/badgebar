@@ -251,53 +251,218 @@ private struct EffectPreview: NSViewRepresentable {
     }
 }
 
+/// The two badge colors: one for counts, one for activity without a number.
+struct BadgeColorsSection: View {
+    @Binding var appearance: BadgeAppearance
+
+    var body: some View {
+        Section("Colors") {
+            LabeledContent {
+                ColorSwatches(hex: $appearance.colorHex)
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Notification count")
+                    Text("3")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 14, height: 14)
+                        .background(Circle().fill(sample(appearance.colorHex)))
+                        .accessibilityHidden(true)
+                }
+                Text("A badge with a number, like 3 new messages.")
+            }
+            LabeledContent {
+                ColorSwatches(hex: $appearance.activityColor, gray: BadgeAppearance.defaultActivityColor)
+            } label: {
+                HStack(spacing: 6) {
+                    Text("New activity")
+                    Circle()
+                        .fill(sample(appearance.activityColor))
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                }
+                Text("A badge with no number, like Slack's unread channels.")
+            }
+        }
+    }
+
+    private func sample(_ hex: String) -> Color {
+        Color(nsColor: NSColor(hex: hex) ?? .systemRed)
+    }
+}
+
+/// Connects the system color panel to one row of swatches at a time. The panel takes a lot of
+/// memory once it exists, so nothing touches it until someone clicks "Other…".
+@MainActor
+final class ColorPanelSession: NSObject, ObservableObject {
+    static let shared = ColorPanelSession()
+
+    /// The row the panel is editing.
+    @Published private(set) var owner: UUID?
+    private var onChange: ((String) -> Void)?
+    private var closeObserver: NSObjectProtocol?
+
+    /// Points the panel at a row, without showing it.
+    func begin(owner: UUID, hex: String, onChange: @escaping (String) -> Void) {
+        let panel = NSColorPanel.shared
+        self.onChange = nil
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.setTarget(self)
+        panel.setAction(#selector(colorChanged(_:)))
+        panel.color = NSColor(hex: hex) ?? .systemRed
+        self.owner = owner
+        self.onChange = onChange
+        if closeObserver == nil {
+            closeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: panel, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.disconnect() }
+            }
+        }
+    }
+
+    /// Shows the panel for a row. It opens beside the window, and stays put if it's already open.
+    func open(owner: UUID, hex: String, onChange: @escaping (String) -> Void) {
+        begin(owner: owner, hex: hex, onChange: onChange)
+        let panel = NSColorPanel.shared
+        if !panel.isVisible { ColorPanelPlacement.place(panel) }
+        panel.orderFront(nil)
+    }
+
+    /// Keeps the panel showing a row's color when a swatch changes it.
+    func sync(owner: UUID, hex: String) {
+        guard owner == self.owner, NSColorPanel.shared.color.hexString != hex else { return }
+        let callback = onChange
+        onChange = nil
+        NSColorPanel.shared.color = NSColor(hex: hex) ?? .systemRed
+        onChange = callback
+    }
+
+    /// Closes the panel when the row it's editing goes away, so it can't change anything else.
+    func end(owner: UUID) {
+        guard owner == self.owner else { return }
+        end()
+    }
+
+    /// Settings can close before SwiftUI sends onDisappear. Leave the panel unloaded if unused.
+    func end() {
+        guard owner != nil else { return }
+        disconnect()
+        NSColorPanel.shared.orderOut(nil)
+    }
+
+    @objc func colorChanged(_ panel: NSColorPanel) {
+        guard panel.color.usingColorSpace(.sRGB) != nil else { return }
+        onChange?(panel.color.hexString)
+    }
+
+    private func disconnect() {
+        owner = nil
+        onChange = nil
+        NSColorPanel.shared.setTarget(nil)
+        NSColorPanel.shared.setAction(nil)
+    }
+}
+
+/// Where the system color panel opens. Otherwise macOS reopens it wherever it was last, which
+/// can be far from the window it was opened from.
+enum ColorPanelPlacement {
+    @MainActor
+    static func place(_ panel: NSColorPanel) {
+        let opener = [NSApp.mainWindow, NSApp.keyWindow].lazy.compactMap { $0 }.first { $0 !== panel }
+        guard let opener, let screen = opener.screen?.visibleFrame else { return }
+        panel.setFrameOrigin(origin(for: panel.frame.size, beside: opener.frame, screen: screen))
+    }
+
+    /// Top-aligned with the window, on its right if there's room, then on its left. If neither
+    /// side has room, it overlaps the window at the right edge of the screen.
+    static func origin(
+        for size: CGSize,
+        beside window: NSRect,
+        screen: NSRect,
+        gap: CGFloat = 12,
+        margin: CGFloat = 8
+    ) -> NSPoint {
+        let right = window.maxX + gap
+        let left = window.minX - gap - size.width
+        let x: CGFloat
+        if right + size.width <= screen.maxX - margin {
+            x = right
+        } else if left >= screen.minX + margin {
+            x = left
+        } else {
+            x = max(screen.maxX - margin - size.width, screen.minX + margin)
+        }
+        let highest = screen.maxY - margin - size.height
+        let y = max(min(window.maxY - size.height, highest), screen.minY + margin)
+        return NSPoint(x: x, y: y)
+    }
+}
+
 /// Color circles in the style of System Settings' accent color picker, plus "Other…", which
 /// opens the system color panel.
 struct ColorSwatches: View {
     @Binding var hex: String
+    /// The gray choice, which matches the default when a row defaults to gray.
+    var gray = "#8E8E93"
 
-    static let presets = ["#FF3B30", "#FF9500", "#34C759", "#0A84FF", "#AF52DE", "#8E8E93"]
-    private static let names = ["Red", "Orange", "Green", "Blue", "Purple", "Gray"]
+    @ObservedObject private var panel = ColorPanelSession.shared
+    @State private var id = UUID()
+
+    private var presets: [(hex: String, name: String)] {
+        [("#FF3B30", "Red"), ("#FF9500", "Orange"), ("#34C759", "Green"), ("#0A84FF", "Blue"), ("#AF52DE", "Purple"), (gray, "Gray")]
+    }
 
     private var isCustom: Bool {
-        !Self.presets.contains { $0.caseInsensitiveCompare(hex) == .orderedSame }
+        !presets.contains { $0.hex.caseInsensitiveCompare(hex) == .orderedSame }
     }
+
+    private var isEditing: Bool { panel.owner == id }
 
     var body: some View {
         HStack(spacing: 8) {
-            ForEach(Array(zip(Self.presets, Self.names)), id: \.0) { preset, name in
-                let selected = preset.caseInsensitiveCompare(hex) == .orderedSame
+            ForEach(presets, id: \.hex) { preset in
+                let selected = preset.hex.caseInsensitiveCompare(hex) == .orderedSame
                 Button {
-                    hex = preset
+                    hex = preset.hex
                 } label: {
-                    swatch(Color(nsColor: NSColor(hex: preset) ?? .red), selected: selected)
+                    swatch(Color(nsColor: NSColor(hex: preset.hex) ?? .red), selected: selected)
                 }
                 .buttonStyle(.plain)
-                .help(name)
-                .accessibilityLabel(name)
+                .help(preset.name)
+                .accessibilityLabel(preset.name)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
-            // "Other…" sits in front of an invisible system color well, which opens the panel.
-            ZStack {
+            Button {
+                panel.open(owner: id, hex: hex) { if hex != $0 { hex = $0 } }
+            } label: {
                 HStack(spacing: 5) {
                     if isCustom {
-                        swatch($hex.color.wrappedValue, selected: true)
+                        swatch(Color(nsColor: NSColor(hex: hex) ?? .red), selected: true)
                     } else {
                         Circle()
                             .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [2.5, 2]))
                             .frame(width: 18, height: 18)
                     }
-                    Text("Other…").font(.callout).foregroundStyle(.secondary)
+                    Text("Other…").font(.callout).foregroundStyle(isEditing ? .primary : .secondary)
                 }
-                ColorPicker("Other Color", selection: $hex.color, supportsOpacity: false)
-                    .labelsHidden()
-                    .opacity(0.02)
-                    .frame(width: 70, height: 22)
-                    .clipped()
+                .padding(.vertical, 2)
+                .padding(.leading, 2)
+                .padding(.trailing, 6)
+                .overlay {
+                    Capsule().strokeBorder(Color.accentColor, lineWidth: 1.5).opacity(isEditing ? 1 : 0)
+                }
+                .contentShape(Capsule())
             }
-            .padding(.leading, 4)
-            .help("Choose any color")
+            .buttonStyle(.plain)
+            .padding(.leading, 2)
+            .help(isEditing ? "The color panel is editing this color" : "Choose any color")
+            .accessibilityLabel("Other Color")
+            .accessibilityAddTraits(isEditing ? .isSelected : [])
         }
+        .onChange(of: hex) { _, newValue in panel.sync(owner: id, hex: newValue) }
+        .onDisappear { panel.end(owner: id) }
     }
 
     private func swatch(_ color: Color, selected: Bool) -> some View {

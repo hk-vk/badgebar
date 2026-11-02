@@ -6,10 +6,10 @@ import XCTest
 final class ActivityColorTests: XCTestCase {
     private let icon = NSImage(size: NSSize(width: 16, height: 16))
 
-    /// The most opaque pixel in the top-right corner, where the dot is drawn, as 0-255 RGBA.
-    private func dotPixel(badge: String, appearance: BadgeAppearance) -> [Int] {
+    /// The most opaque pixel in the image, which is the badge since the icon is empty, as 0-255 RGBA.
+    private func dotPixel(badge: String, appearance: BadgeAppearance, style: BadgeStyle = .dot) -> [Int] {
         var appearance = appearance
-        appearance.style = .dot
+        appearance.style = style
         let image = BadgeRenderer.image(icon: icon, badge: Badge(label: badge), appearance: appearance)
         let width = Int(image.size.width * 4), height = Int(image.size.height * 4)
         let rep = NSBitmapImageRep(
@@ -40,7 +40,7 @@ final class ActivityColorTests: XCTestCase {
         let expected = NSColor(hex: hex)!.usingColorSpace(.deviceRGB)!
         let target = [expected.redComponent, expected.greenComponent, expected.blueComponent].map { Int($0 * 255) }
         for channel in 0..<3 {
-            XCTAssertEqual(pixel[channel], target[channel], accuracy: 24, "\(pixel) is not \(hex)", file: file, line: line)
+            XCTAssertEqual(pixel[channel], target[channel], accuracy: 4, "\(pixel) is not \(hex)", file: file, line: line)
         }
     }
 
@@ -49,6 +49,7 @@ final class ActivityColorTests: XCTestCase {
         appearance.colorHex = "#FF3B30"
         appearance.activityColor = "#0A84FF"
         assertColor(dotPixel(badge: "•", appearance: appearance), hex: "#0A84FF")
+        assertColor(dotPixel(badge: "•", appearance: appearance, style: .circle), hex: "#0A84FF")
     }
 
     func testCountBadgeStillUsesTheBadgeColor() {
@@ -61,7 +62,7 @@ final class ActivityColorTests: XCTestCase {
     func testDefaultActivityDotIsSolidGray() {
         let pixel = dotPixel(badge: "•", appearance: BadgeAppearance())
         XCTAssertEqual(pixel[3], 255, "the dot should be opaque so it shows over a white icon")
-        assertColor(pixel, hex: "#8E8E93")
+        assertColor(pixel, hex: BadgeAppearance.defaultActivityColor)
     }
 
     func testSettingsSavedBeforeThisColorExistedStillLoad() throws {
@@ -70,7 +71,7 @@ final class ActivityColorTests: XCTestCase {
         XCTAssertEqual(appearance.style, .dot)
         XCTAssertEqual(appearance.colorHex, "#34C759")
         XCTAssertNil(appearance.activityColorHex)
-        XCTAssertEqual(appearance.activityColor, "#8E8E93")
+        XCTAssertEqual(appearance.activityColor, BadgeAppearance.defaultActivityColor)
     }
 
     func testChosenColorSurvivesSaving() throws {

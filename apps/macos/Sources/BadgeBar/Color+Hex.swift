@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 extension NSColor {
     convenience init?(hex: String) {
@@ -20,16 +19,6 @@ extension NSColor {
             Int(round(rgb.redComponent * 255)),
             Int(round(rgb.greenComponent * 255)),
             Int(round(rgb.blueComponent * 255))
-        )
-    }
-}
-
-extension Binding where Value == String {
-    /// Adapts a hex string binding for use with `ColorPicker`.
-    var color: Binding<Color> {
-        Binding<Color>(
-            get: { Color(nsColor: NSColor(hex: wrappedValue) ?? .systemRed) },
-            set: { wrappedValue = NSColor($0).hexString }
         )
     }
 }

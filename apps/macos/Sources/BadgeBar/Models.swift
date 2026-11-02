@@ -79,9 +79,12 @@ struct BadgeAppearance: Codable, Hashable {
     var activityColorHex: String?
     var emptyBehavior: EmptyBehavior = .useDefault
 
+    /// A gray that stays readable on white icons and on light and dark menu bars.
+    static let defaultActivityColor = "#7C7C80"
+
     /// A badge without a number only signals quiet activity, so it's gray unless chosen otherwise.
     var activityColor: String {
-        get { activityColorHex ?? "#8E8E93" }
+        get { activityColorHex ?? Self.defaultActivityColor }
         set { activityColorHex = newValue }
     }
 
