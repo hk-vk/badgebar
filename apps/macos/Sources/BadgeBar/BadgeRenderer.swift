@@ -140,11 +140,52 @@ enum BadgeRenderer {
         rep.size = NSSize(width: iconSize, height: iconSize)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        icon.draw(in: NSRect(origin: .zero, size: rep.size), from: source ?? .zero, operation: .sourceOver, fraction: 1)
+        let target = fitted(source?.size ?? icon.size, in: NSRect(origin: .zero, size: rep.size))
+        icon.draw(in: target, from: source ?? .zero, operation: .sourceOver, fraction: 1)
         NSGraphicsContext.restoreGraphicsState()
         let image = NSImage(size: rep.size)
         image.addRepresentation(rep)
         image.isTemplate = icon.isTemplate
+        return image
+    }
+
+    /// An SF Symbol without the transparent space around its shape, so it fills the icon space
+    /// like a trimmed app icon. It's drawn once and its pixels cropped, because a symbol's shape
+    /// shifts within its bounds when it's drawn at other proportions. The bitmap is large enough
+    /// for the biggest place Settings shows it.
+    static func trimmedSymbol(_ symbol: NSImage) -> NSImage {
+        let size = symbol.size
+        guard size.width > 0, size.height > 0 else { return symbol }
+        let scale = 128 / max(size.width, size.height)
+        let width = max(Int((size.width * scale).rounded()), 1)
+        let height = max(Int((size.height * scale).rounded()), 1)
+        guard
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: width * 4, bitsPerPixel: 32
+            ),
+            let data = rep.bitmapData
+        else { return symbol }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        symbol.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+
+        // Any ink counts, so the shape's soft edge is kept.
+        var minX = width, minY = height, maxX = -1, maxY = -1
+        for y in 0..<height {
+            for x in 0..<width where data[(y * width + x) * 4 + 3] > 0 {
+                minX = min(minX, x); maxX = max(maxX, x)
+                minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return symbol }
+        // CGImage rows run top-down, like the bitmap's.
+        let crop = CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
+        guard let cropped = rep.cgImage?.cropping(to: crop) else { return symbol }
+        let image = NSImage(cgImage: cropped, size: NSSize(width: crop.width / scale, height: crop.height / scale))
+        image.isTemplate = symbol.isTemplate
         return image
     }
 
@@ -178,7 +219,15 @@ enum BadgeRenderer {
         return result!
     }
 
-    /// The square part of an image that holds its visible shape, in the image's coordinates.
+    /// The largest rectangle with the proportions of `size` that fits in `rect`, centered in it.
+    private static func fitted(_ size: NSSize, in rect: NSRect) -> NSRect {
+        guard size.width > 0, size.height > 0 else { return rect }
+        let scale = min(rect.width / size.width, rect.height / size.height)
+        let width = size.width * scale, height = size.height * scale
+        return NSRect(x: rect.midX - width / 2, y: rect.midY - height / 2, width: width, height: height)
+    }
+
+    /// The part of an image that holds its visible shape, in the image's coordinates.
     /// Faint pixels, like an icon's soft drop shadow, don't count.
     private static func visibleBounds(of icon: NSImage) -> NSRect? {
         let side = 64
@@ -204,17 +253,14 @@ enum BadgeRenderer {
         }
         guard maxX >= minX, maxY >= minY else { return nil }
 
-        // Keep it square and centered on the shape, so the icon isn't stretched.
-        let length = CGFloat(max(maxX - minX, maxY - minY) + 1)
-        let midX = CGFloat(minX + maxX + 1) / 2
-        let midY = CGFloat(minY + maxY + 1) / 2
         // Bitmap rows run top-down; image coordinates run bottom-up.
-        let scale = icon.size.width / CGFloat(side)
+        let scaleX = icon.size.width / CGFloat(side)
+        let scaleY = icon.size.height / CGFloat(side)
         return NSRect(
-            x: (midX - length / 2) * scale,
-            y: (CGFloat(side) - midY - length / 2) * scale,
-            width: length * scale,
-            height: length * scale
+            x: CGFloat(minX) * scaleX,
+            y: CGFloat(side - maxY - 1) * scaleY,
+            width: CGFloat(maxX - minX + 1) * scaleX,
+            height: CGFloat(maxY - minY + 1) * scaleY
         )
     }
 
@@ -277,13 +323,13 @@ enum BadgeRenderer {
 
     private static func drawIcon(_ icon: NSImage, in rect: NSRect, alpha: CGFloat) {
         guard icon.isTemplate else {
-            icon.draw(in: rect, from: .zero, operation: .sourceOver, fraction: alpha)
+            icon.draw(in: fitted(icon.size, in: rect), from: .zero, operation: .sourceOver, fraction: alpha)
             return
         }
         // Template images (SF Symbols for groups) are tinted with the menu bar's text color.
         // This runs at draw time, so labelColor resolves against the current light/dark appearance.
         let tinted = NSImage(size: rect.size, flipped: false) { bounds in
-            icon.draw(in: bounds)
+            icon.draw(in: fitted(icon.size, in: bounds))
             NSColor.labelColor.set()
             bounds.fill(using: .sourceAtop)
             return true

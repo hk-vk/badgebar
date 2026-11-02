@@ -16,7 +16,7 @@ enum AppIcons {
     /// The icon drawn in the menu bar for a tracked app, honoring its icon style. It's kept as
     /// a small bitmap at menu bar size, so the menu bar never holds on to full-size icons.
     static func menuBarIcon(for app: TrackedApp) -> NSImage {
-        if app.iconStyle == .custom, let name = app.customSymbol { return symbol(name) }
+        if app.iconStyle == .custom, let name = app.customSymbol { return menuBarSymbol(name) }
         let key = "\(app.bundleID)|\(app.iconStyle.rawValue)|\(app.customIconPath ?? "")"
         if let cached = cache[key] { return cached }
 
@@ -37,10 +37,10 @@ enum AppIcons {
 
     /// The icon drawn in the menu bar for a group: its custom image, or else its symbol.
     static func menuBarIcon(for group: AppGroup) -> NSImage {
-        guard let path = group.customIconPath else { return symbol(group.symbol) }
+        guard let path = group.customIconPath else { return menuBarSymbol(group.symbol) }
         let key = "group|\(path)"
         if let cached = cache[key] { return cached }
-        guard let image = NSImage(contentsOfFile: path) else { return symbol(group.symbol) }
+        guard let image = NSImage(contentsOfFile: path) else { return menuBarSymbol(group.symbol) }
         let small = BadgeRenderer.rasterized(image, trimmingMargins: true)
         cache[key] = small
         return small
@@ -109,6 +109,15 @@ enum AppIcons {
     /// load dozens of icons for their lists; call this once they close.
     static func releaseLargeIcons() {
         cache = cache.filter { $0.key.contains("|") }
+    }
+
+    /// A symbol chosen as an icon, trimmed to fill the menu bar's icon space.
+    private static func menuBarSymbol(_ name: String) -> NSImage {
+        let key = "symbol|\(name)"
+        if let cached = cache[key] { return cached }
+        let image = BadgeRenderer.trimmedSymbol(symbol(name))
+        cache[key] = image
+        return image
     }
 
     static func symbol(_ name: String) -> NSImage {
