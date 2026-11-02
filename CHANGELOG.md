@@ -2,6 +2,12 @@
 
 What changed in each release of BadgeBar. The release workflow copies a version's section into its GitHub release notes, so add one before tagging.
 
+## 0.3.1
+
+- **Custom icons keep their shape.** SF Symbols and non-square images used to be squeezed into a square. They now keep their proportions, and symbols fill the icon space so they sit evenly next to app icons.
+- **A separate color for new activity.** Badges with no number, like Slack's unread channels, were a see-through gray that was hard to spot on white icons. A new Colors section in Settings sets this color apart from the notification count, and the default is now a solid, darker gray.
+- **The color panel opens beside Settings.** Other… opens it next to the window instead of wherever it was last, and outlines the row you're editing.
+
 ## 0.3.0
 
 - **Notification history that sticks around.** BadgeBar keeps its own copy of recent messages, so they're still there after you clear them in Notification Center. Choose how many to keep per app, or clear them, in Settings.
