@@ -92,7 +92,7 @@ That's it. There's no account and nothing else to configure. To update, run
 
 ## Privacy
 
-BadgeBar never connects to the internet. Message text is read from Notification Center's history
+BadgeBar checks for software updates daily and when you choose Check for Updates. Message text is read from Notification Center's history
 on your Mac and stays there. Marking messages as read only hides them in BadgeBar; macOS doesn't let
 other apps change Notification Center or an app's own badge.
 
@@ -122,6 +122,20 @@ open build/BadgeBar.app
 
 For development, use `swift build && .build/debug/BadgeBar` in `apps/macos`. Accessibility
 permission is then granted to your terminal.
+
+### Updates and releases
+
+BadgeBar checks for updates daily and offers **Check for Updates…** in its menu. Sparkle verifies
+the signed download before extracting it. The first version with Sparkle must be installed
+manually; earlier versions do not know how to update themselves.
+
+The release workflow signs the update archive with the `SPARKLE_PRIVATE_KEY` GitHub secret and
+publishes an appcast alongside the GitHub release. It then triggers the website workflow, which
+copies the latest release's appcast to `https://badgebar.hari.works/appcast.xml`. Increase both
+`CFBundleShortVersionString` and `CFBundleVersion` for each release. The Sparkle private key is
+stored in the macOS Keychain under the account `io.github.hk-vk.badgebar`; keep a secure backup.
+Losing it can prevent deployed copies from accepting future updates. Run `swift test` and
+`scripts/build-app.sh` before releasing; use the release workflow's manual dispatch for a dry run.
 
 > macOS ties privacy permissions to the app's code signature. An ad-hoc signature changes on every
 > build, so a permission granted to one build silently stops working for the next, even though the

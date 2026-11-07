@@ -32,6 +32,16 @@ jobs:
           SITE_URL: https://badgebar.hari.works
           SITE_BASE: /
           PUBLIC_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+      # Releases carry their signed feed as an asset. Keeping it with the release makes the
+      # feed and archive atomic; every website deployment picks up the latest published feed.
+      - name: Include the latest update feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets="$(gh release view --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          if printf '%s\n' "$assets" | grep -Fxq appcast.xml; then
+            gh release download --repo "$GITHUB_REPOSITORY" --pattern appcast.xml --dir apps/web/dist --clobber
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/dist

@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   release:
@@ -73,6 +74,19 @@ jobs:
           echo "SHA256=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)" >> "$GITHUB_ENV"
           cat notes.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Generate signed update feed
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          test -n "$SPARKLE_PRIVATE_KEY" || { echo '::error::SPARKLE_PRIVATE_KEY is not configured'; exit 1; }
+          mkdir -p update-feed
+          cp "$ZIP" update-feed/
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | apps/macos/.build/artifacts/sparkle/Sparkle/bin/generate_appcast \
+            --ed-key-file - --maximum-deltas 0 \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/" \
+            --link "https://badgebar.hari.works" update-feed
+          cp update-feed/appcast.xml appcast.xml
+
       - name: Keep the build (dry run)
         if: env.PUBLISH != 'true'
         uses: actions/upload-artifact@v4
@@ -81,12 +95,19 @@ jobs:
           path: |
             ${{ env.ZIP }}
             notes.md
+            appcast.xml
 
       - name: Publish the release
         if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$TAG" "$ZIP" --title "BadgeBar $VERSION" --notes-file notes.md --verify-tag
+        run: gh release create "$TAG" "$ZIP" appcast.xml --title "BadgeBar $VERSION" --notes-file notes.md --verify-tag
+
+      - name: Publish the update feed on the website
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run web.yml --ref main
 
       - name: Check out the Homebrew tap
         if: env.PUBLISH == 'true'
@@ -104,6 +125,9 @@ jobs:
             -e "s/^  version \".*\"/  version \"$VERSION\"/" \
             -e "s/^  sha256 \".*\"/  sha256 \"$SHA256\"/" \
             Casks/badgebar.rb
+          if ! grep -q '^  auto_updates true' Casks/badgebar.rb; then
+            sed -i '' $'/^  sha256 /a\\\n  auto_updates true\n' Casks/badgebar.rb
+          fi
           git diff
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

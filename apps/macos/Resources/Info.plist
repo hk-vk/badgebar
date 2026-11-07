@@ -28,5 +28,15 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT License</string>
+	<key>SUFeedURL</key>
+	<string>https://badgebar.hari.works/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>eGddTEMSc+Hke+ZIHlIXJkqTnKgpxMJtAZM5na+qba0=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import Darwin
 import SwiftUI
+import Sparkle
 
 @main
 @MainActor
@@ -13,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var cancellables: Set<AnyCancellable> = []
+    private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     static func main() {
         let app = NSApplication.shared
@@ -57,7 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             store: store,
             monitor: monitor,
             openSettings: { [weak self] in self?.showSettings(selecting: $0) },
-            openGuide: { [weak self] in self?.showOnboarding() }
+            openGuide: { [weak self] in self?.showOnboarding() },
+            checkForUpdates: { [weak self] in self?.updater.checkForUpdates(nil) }
         )
 
         // macOS sometimes applies a fresh Accessibility grant only after a relaunch.
@@ -192,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appMenu.addItem(.separator())
         appMenu.addItem(ClosureMenuItem("Settings…", key: ",") { [weak self] in self?.showSettings() })
         appMenu.addItem(ClosureMenuItem("Welcome Guide") { [weak self] in self?.showOnboarding() })
+        appMenu.addItem(ClosureMenuItem("Check for Updates…") { [weak self] in self?.updater.checkForUpdates(nil) })
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide BadgeBar", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())

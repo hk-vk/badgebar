@@ -21,15 +21,22 @@ APP="build/BadgeBar.app"
 # SwiftPM records the deployment target (14.0) as the SDK version in the binary, and macOS
 # then draws the app with its old, pre-Liquid Glass controls. Record the real SDK instead.
 SDK_VERSION="$(xcrun --show-sdk-version)"
-LINK_FLAGS=(-Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$SDK_VERSION")
+LINK_FLAGS=(-Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$SDK_VERSION" -Xlinker -rpath -Xlinker @executable_path/../Frameworks)
 
 swift build -c release --arch arm64 --arch x86_64 "${LINK_FLAGS[@]}"
 BIN="$(swift build -c release --arch arm64 --arch x86_64 "${LINK_FLAGS[@]}" --show-bin-path)/BadgeBar"
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN" "$APP/Contents/MacOS/BadgeBar"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+ditto .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework "$SPARKLE"
+# The non-sandboxed app does not use Sparkle's XPC services.
+rm -rf "$SPARKLE/Versions/B/XPCServices" "$SPARKLE/XPCServices"
+codesign --force --options runtime --sign "$IDENTITY" "$SPARKLE/Versions/B/Autoupdate"
+codesign --force --options runtime --sign "$IDENTITY" "$SPARKLE/Versions/B/Updater.app"
+codesign --force --options runtime --sign "$IDENTITY" "$SPARKLE"
 # The icon is an Icon Composer document. actool compiles it into Assets.car, which macOS
 # renders with Liquid Glass in the user's icon style (default, dark, clear, tinted), plus an
 # AppIcon.icns for older systems.
@@ -39,5 +46,5 @@ xcrun actool Resources/AppIcon.icon --compile "$APP/Contents/Resources" \
 # Fixed light and dark renderings, for the App Icon choice in Settings.
 cp Resources/AppIcon-light.png Resources/AppIcon-dark.png "$APP/Contents/Resources/"
 
-codesign --force --options runtime --sign "$IDENTITY" "$APP"
+codesign --force --options runtime --entitlements Resources/BadgeBar.entitlements --sign "$IDENTITY" "$APP"
 echo "Built $APP"

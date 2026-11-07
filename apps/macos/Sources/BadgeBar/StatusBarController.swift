@@ -33,6 +33,7 @@ final class StatusBarController: NSObject {
     private let monitor: BadgeMonitor
     private let openSettings: (SidebarItem?) -> Void
     private let openGuide: () -> Void
+    private let checkForUpdates: () -> Void
     /// Where the open menu came from, so its items can show a preview from the same icon.
     private var menuSource: NSStatusBarButton?
     /// Where that icon was clicked, in screen coordinates.
@@ -61,12 +62,14 @@ final class StatusBarController: NSObject {
         store: Store,
         monitor: BadgeMonitor,
         openSettings: @escaping (SidebarItem?) -> Void,
-        openGuide: @escaping () -> Void
+        openGuide: @escaping () -> Void,
+        checkForUpdates: @escaping () -> Void
     ) {
         self.store = store
         self.monitor = monitor
         self.openSettings = openSettings
         self.openGuide = openGuide
+        self.checkForUpdates = checkForUpdates
         super.init()
         Self.forgetRenamedItems()
 
@@ -528,6 +531,7 @@ final class StatusBarController: NSObject {
         menu.addItem(historyItem("Notification History…", key: "main"))
         menu.addItem(ClosureMenuItem("Settings…", key: ",") { [openSettings] in openSettings(nil) })
         menu.addItem(ClosureMenuItem("Welcome Guide") { [openGuide] in openGuide() })
+        menu.addItem(ClosureMenuItem("Check for Updates…") { [checkForUpdates] in checkForUpdates() })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Quit BadgeBar", key: "q") { NSApp.terminate(nil) })
         return menu
