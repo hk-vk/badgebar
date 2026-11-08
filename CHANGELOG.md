@@ -2,6 +2,10 @@
 
 What changed in each release of BadgeBar. The release workflow copies a version's section into its GitHub release notes, so add one before tagging.
 
+## 0.3.2
+
+- **Automatic updates.** BadgeBar now checks for updates once a day, and its menu has a Check for Updates… item. Downloads are signed and verified before they're installed. This version has to be installed by hand, since older versions can't update themselves. Later ones will arrive on their own.
+
 ## 0.3.1
 
 - **Custom icons keep their shape.** SF Symbols and non-square images used to be squeezed into a square. They now keep their proportions, and symbols fill the icon space so they sit evenly next to app icons.
