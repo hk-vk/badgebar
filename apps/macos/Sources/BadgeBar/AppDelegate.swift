@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusBar: StatusBarController?
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    private let starPrompt = StarPrompt()
     private var cancellables: Set<AnyCancellable> = []
     private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
@@ -137,9 +138,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func showOnboarding(at step: OnboardingStep = .welcome) {
         onboardingWindow?.close()
+        // Read now: completing onboarding sets this before the closure runs. Anyone who has
+        // already finished onboarding, including people updating, never gets the star prompt.
+        let isFirstCompletion = !store.general.hasCompletedOnboarding
         let view = OnboardingView(store: store, monitor: monitor, step: step) { [weak self] openSettings in
+            let screen = self?.onboardingWindow?.screen
             self?.onboardingWindow?.close()
             if openSettings { self?.showSettings(selecting: .menuBar) }
+            if isFirstCompletion { self?.starPrompt.show(on: screen) }
         }
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.styleMask = [.titled, .closable, .fullSizeContentView]
@@ -166,7 +172,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if closing === settingsWindow { ColorPanelSession.shared.end() }
         let others = [settingsWindow, onboardingWindow].compactMap { $0 }.filter { $0 !== closing && $0.isVisible }
         if others.isEmpty {
-            DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
+            DispatchQueue.main.async { [weak self] in
+                // Checked now because closing onboarding can open Settings straight after.
+                guard let self, self.settingsWindow?.isVisible != true, self.onboardingWindow?.isVisible != true else { return }
+                NSApp.setActivationPolicy(.accessory)
+            }
         }
         // Release closed windows and their view trees; BadgeBar mostly lives in the menu bar,
         // so there's no point holding on to them. The router keeps the selected page.
