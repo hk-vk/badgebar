@@ -475,9 +475,10 @@ final class StatusBarController: NSObject {
             preview.close()
             show(mainMenu(), from: sender)
         case let (.app(bundleID, _, _), false):
-            // Like a Dock icon: a click opens the app. Messages are a right-click away.
+            // Like a Dock icon: a click opens the app, and another click hides it again.
+            // Messages are a right-click away.
             preview.close()
-            AppIcons.open(bundleID)
+            AppIcons.toggle(bundleID, hidesWhenActive: store.general.clickToHide)
         case let (.app(bundleID, name, tracked), true):
             show(appMenu(key: key, bundleID: bundleID, name: name, tracked: tracked), from: sender)
         case (.group, false):

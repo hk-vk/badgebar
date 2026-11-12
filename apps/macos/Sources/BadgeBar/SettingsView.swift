@@ -394,6 +394,13 @@ private struct MenuBarPane: View {
                 FooterNote("Icons with a badge always show. Apps and groups can override the first setting on their own pages.")
             }
 
+            Section("Clicking Icons") {
+                Toggle(isOn: $store.general.clickToHide) {
+                    Text("Click again to hide an app")
+                    Text("Clicking the icon of the app you're using hides it, so one click opens it and the next puts it away.")
+                }
+            }
+
             Section {
                 LabeledContent("Animation") {
                     EffectPicker(effect: $store.general.badgeEffect, icon: sampleIcon, appearance: sampleAppearance)

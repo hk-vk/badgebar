@@ -140,11 +140,43 @@ enum AppIcons {
         Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier?.lowercased() })
     }
 
-    static func open(_ bundleID: String) {
-        guard let url = url(for: bundleID) else { return }
+    /// Opens an app, or brings it forward. Returns false if no app has that bundle ID.
+    @discardableResult
+    static func open(_ bundleID: String) -> Bool {
+        guard let url = url(for: bundleID) else { return false }
         // openApplication (rather than activate) also reopens a window if the app has none.
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: config)
+        return true
+    }
+
+    /// Opens an app, or hides it if it's already in front with a window showing, so a second
+    /// click on its icon puts it away again. An app in front without windows is opened
+    /// instead, which brings a window back, as the Dock does.
+    static func toggle(_ bundleID: String, hidesWhenActive: Bool) {
+        if hidesWhenActive, let front = NSWorkspace.shared.frontmostApplication,
+           front.bundleIdentifier?.lowercased() == bundleID.lowercased(),
+           hasWindowOnScreen(front.processIdentifier),
+           front.hide() {
+            return
+        }
+        open(bundleID)
+    }
+
+    /// Whether the process has a normal, visible window on screen. These details are readable
+    /// without the Screen Recording permission.
+    private static func hasWindowOnScreen(_ pid: pid_t) -> Bool {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] ?? []
+        return windows.contains { window in
+            guard (window[kCGWindowOwnerPID as String] as? pid_t) == pid,
+                  (window[kCGWindowLayer as String] as? Int) == 0,
+                  (window[kCGWindowAlpha as String] as? Double ?? 1) > 0,
+                  let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds) else { return false }
+            // Some apps keep tiny or transparent helper windows around.
+            return rect.width > 50 && rect.height > 50
+        }
     }
 }

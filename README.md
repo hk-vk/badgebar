@@ -35,8 +35,9 @@ Free and open source. Needs macOS 14 or later, on Apple silicon or Intel.
 **One icon per app.** Any app that shows a badge on the Dock can have a menu bar icon. Icons dim
 when there's nothing new, or you can hide them until something arrives.
 
-**Click to open, right-click to read.** Click an icon to open its app, like the Dock. Right-click
-it to see who wrote and what they said, mark everything as read, or show all its messages.
+**Click to open, right-click to read.** Click an icon to open its app, like the Dock, and click
+again to hide it. Right-click it to see who wrote and what they said, mark everything as read, or
+show all its messages.
 
 **Optionally show apps you haven't added.** Turn it on and any app with a badge appears on its own
 until its badge clears, so nothing slips by.
