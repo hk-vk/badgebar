@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 /// Looks up and caches app icons and SF Symbols used across the UI.
 @MainActor
@@ -149,32 +150,55 @@ enum AppIcons {
         return true
     }
 
-    /// Opens an app, or hides it if it's already in front with a window showing, so a second
-    /// click on its icon puts it away again. An app in front without windows is opened
-    /// instead, which brings a window back, as the Dock does.
+    private static let log = Logger(subsystem: "io.github.hk-vk.badgebar", category: "clicks")
+
+    /// Opens an app, or hides it if its window is the one in front, so a second click on its
+    /// icon puts it away again. An app whose windows are all closed or behind others is opened
+    /// instead, which brings a window forward, as the Dock does.
     static func toggle(_ bundleID: String, hidesWhenActive: Bool) {
-        if hidesWhenActive, let front = NSWorkspace.shared.frontmostApplication,
-           front.bundleIdentifier?.lowercased() == bundleID.lowercased(),
-           hasWindowOnScreen(front.processIdentifier),
-           front.hide() {
+        let target = bundleID.lowercased()
+        // The window server knows right away which window is on top. NSWorkspace's
+        // frontmostApplication is updated asynchronously and can lag when switching fast.
+        let top = topWindowOwner()
+        let inFront = top?.bundleIdentifier?.lowercased() == target
+        if hidesWhenActive, inFront, let top {
+            let hidden = hide(top)
+            log.debug("click \(bundleID, privacy: .public): in front, hide -> \(hidden)")
+            // Opening it instead would only flash it, so a failed hide does nothing.
             return
+        } else {
+            log.debug("click \(bundleID, privacy: .public): top window \(top?.bundleIdentifier ?? "none", privacy: .public), active app \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none", privacy: .public), open")
         }
         open(bundleID)
     }
 
-    /// Whether the process has a normal, visible window on screen. These details are readable
-    /// without the Screen Recording permission.
-    private static func hasWindowOnScreen(_ pid: pid_t) -> Bool {
+    /// Hides an app. macOS refuses `NSRunningApplication.hide()` from an app that isn't active,
+    /// which BadgeBar isn't while its menu bar icons are clicked, so this goes through
+    /// Accessibility, which BadgeBar has for reading badges.
+    private static func hide(_ app: NSRunningApplication) -> Bool {
+        let element = AXUIElementCreateApplication(app.processIdentifier)
+        if AXUIElementSetAttributeValue(element, kAXHiddenAttribute as CFString, kCFBooleanTrue) == .success {
+            return true
+        }
+        return app.hide()
+    }
+
+    /// The app that owns the frontmost normal window on screen, ignoring BadgeBar's own
+    /// windows and tiny or transparent helper windows. These details are readable without the
+    /// Screen Recording permission. The list comes front to back.
+    private static func topWindowOwner() -> NSRunningApplication? {
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] ?? []
-        return windows.contains { window in
-            guard (window[kCGWindowOwnerPID as String] as? pid_t) == pid,
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        for window in windows {
+            guard let pid = window[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID,
                   (window[kCGWindowLayer as String] as? Int) == 0,
                   (window[kCGWindowAlpha as String] as? Double ?? 1) > 0,
                   let bounds = window[kCGWindowBounds as String] as? NSDictionary,
-                  let rect = CGRect(dictionaryRepresentation: bounds) else { return false }
-            // Some apps keep tiny or transparent helper windows around.
-            return rect.width > 50 && rect.height > 50
+                  let rect = CGRect(dictionaryRepresentation: bounds),
+                  rect.width > 50, rect.height > 50 else { continue }
+            return NSRunningApplication(processIdentifier: pid)
         }
+        return nil
     }
 }
