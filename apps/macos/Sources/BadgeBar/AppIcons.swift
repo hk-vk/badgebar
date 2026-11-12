@@ -55,12 +55,18 @@ enum AppIcons {
     /// Copies an image chosen as an icon into BadgeBar's own folder, so the icon keeps working
     /// if the original is moved or deleted. Returns the copy's path.
     static func importCustomIcon(from url: URL) -> String? {
-        guard let folder = customIconFolder, NSImage(contentsOf: url) != nil else { return nil }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return saveCustomIcon(data, pathExtension: url.pathExtension)
+    }
+
+    /// Saves image data as an icon in BadgeBar's own folder, under a new name. Returns its path.
+    static func saveCustomIcon(_ data: Data, pathExtension: String) -> String? {
+        guard let folder = customIconFolder, NSImage(data: data) != nil else { return nil }
         let copy = folder.appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension(url.pathExtension.isEmpty ? "png" : url.pathExtension)
+            .appendingPathExtension(pathExtension.isEmpty ? "png" : pathExtension)
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: url, to: copy)
+            try data.write(to: copy)
             return copy.path
         } catch {
             return nil
@@ -70,18 +76,10 @@ enum AppIcons {
     /// Saves an app's icon as an image in BadgeBar's own folder, for using it as another
     /// item's icon. Returns the image's path.
     static func importAppIcon(_ bundleID: String) -> String? {
-        guard let folder = customIconFolder else { return nil }
         var rect = NSRect(x: 0, y: 0, width: 256, height: 256)
         guard let cgImage = icon(for: bundleID).cgImage(forProposedRect: &rect, context: nil, hints: nil),
               let png = NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) else { return nil }
-        let copy = folder.appendingPathComponent(UUID().uuidString).appendingPathExtension("png")
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try png.write(to: copy)
-            return copy.path
-        } catch {
-            return nil
-        }
+        return saveCustomIcon(png, pathExtension: "png")
     }
 
     /// An app's name as Finder shows it.

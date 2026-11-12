@@ -70,6 +70,9 @@ open it.
 
 **Light and dark app icon.** Pick Automatic, Light or Dark in Settings.
 
+**Take your setup along.** Export your apps, groups, icons and settings to a file, and import it
+on another Mac.
+
 ## Getting started
 
 1. Install with [Homebrew](https://brew.sh):

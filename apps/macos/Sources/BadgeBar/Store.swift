@@ -189,6 +189,23 @@ final class Store: ObservableObject {
         NotificationHistory.shared.clear([bundleID])
     }
 
+    /// Replaces apps, groups and general settings with an imported settings file, and
+    /// deletes the custom icon images the old setup used.
+    func replaceSettings(with file: SettingsFile) {
+        let oldIcons = apps.map(\.customIconPath) + groups.map(\.customIconPath)
+        let imported = file.unpacked { AppIcons.saveCustomIcon($0, pathExtension: $1) }
+        var newGeneral = file.general
+        // The welcome guide is about this Mac's permissions, which don't come with the file.
+        newGeneral.hasCompletedOnboarding = general.hasCompletedOnboarding
+        apps = imported.apps
+        groups = imported.groups
+        general = newGeneral
+        let kept = Set(apps.compactMap(\.customIconPath) + groups.compactMap(\.customIconPath))
+        for path in oldIcons where path.map({ !kept.contains($0) }) ?? false {
+            AppIcons.removeCustomIcon(path)
+        }
+    }
+
     func deleteGroup(_ id: UUID) {
         AppIcons.removeCustomIcon(groups.first { $0.id == id }?.customIconPath)
         groups.removeAll { $0.id == id }

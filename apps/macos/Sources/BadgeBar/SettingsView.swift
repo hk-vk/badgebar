@@ -793,6 +793,21 @@ private struct GeneralPane: View {
             }
 
             Section {
+                LabeledContent("Apps, groups and settings") {
+                    HStack {
+                        Button("Export…") { SettingsTransfer.export(store) }
+                            .nativeButton()
+                        Button("Import…") { SettingsTransfer.import(into: store) }
+                            .nativeButton()
+                    }
+                }
+            } header: {
+                Text("Back Up and Move")
+            } footer: {
+                FooterNote("Saves your apps, groups, icons and settings to a file you can import on another Mac. Notification history isn't included.")
+            }
+
+            Section {
                 Picker("Refresh badges", selection: $store.general.pollInterval) {
                     ForEach(Self.intervals, id: \.1) { Text($0.0).tag($0.1) }
                 }
