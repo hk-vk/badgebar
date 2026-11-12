@@ -1,8 +1,70 @@
 import XCTest
 @testable import BadgeBar
 
-/// Settings files are a format other Macs depend on.
+/// The counts file, badgebar:// links and settings files are formats other tools and other
+/// Macs depend on.
 final class IntegrationTests: XCTestCase {
+    // MARK: Counts file
+
+    func testListsAddedAppsInOrderThenOtherBadgedAppsByName() {
+        let group = AppGroup(name: "Chat")
+        var slack = TrackedApp(bundleID: "com.tinyspeck.slackmacgap", name: "Slack")
+        slack.groupID = group.id
+        let mail = TrackedApp(bundleID: "com.apple.mail", name: "Mail")
+        let apps = BadgeExport.apps(
+            tracked: [slack, mail],
+            groups: [group],
+            badges: [
+                "com.tinyspeck.slackmacgap": Badge(label: "12"),
+                "com.apple.MobileSMS": Badge(label: "3"),
+                "ru.keepcoder.Telegram": Badge(label: "•"),
+            ],
+            names: ["com.apple.MobileSMS": "Messages", "ru.keepcoder.Telegram": "Telegram"],
+            running: ["com.tinyspeck.slackmacgap", "com.apple.mobilesms"]
+        )
+
+        XCTAssertEqual(apps.map(\.name), ["Slack", "Mail", "Messages", "Telegram"])
+        XCTAssertEqual(apps[0], BadgeExport.App(
+            bundleID: "com.tinyspeck.slackmacgap", name: "Slack", label: "12", count: 12,
+            running: true, tracked: true, group: "Chat"
+        ))
+        XCTAssertNil(apps[1].label)
+        XCTAssertFalse(apps[1].running)
+        XCTAssertEqual(apps[2].count, 3)
+        XCTAssertTrue(apps[2].running, "Running IDs are lowercased")
+        XCTAssertFalse(apps[2].tracked)
+        XCTAssertEqual(apps[3].label, "•")
+        XCTAssertNil(apps[3].count)
+    }
+
+    func testMatchesBadgesRegardlessOfLetterCase() {
+        let apps = BadgeExport.apps(
+            tracked: [TrackedApp(bundleID: "com.apple.mobilesms", name: "Messages")],
+            groups: [],
+            badges: ["com.apple.MobileSMS": Badge(label: "3")],
+            names: [:],
+            running: []
+        )
+        XCTAssertEqual(apps.count, 1)
+        XCTAssertEqual(apps[0].count, 3)
+    }
+
+    // MARK: Links
+
+    func testParsesLinks() {
+        func command(_ string: String) -> URLCommand? { URLCommand(URL(string: string)!) }
+        XCTAssertEqual(command("badgebar://open?app=com.apple.mail"), .open(bundleID: "com.apple.mail"))
+        XCTAssertEqual(command("BADGEBAR://Open?app=com.apple.mail"), .open(bundleID: "com.apple.mail"))
+        XCTAssertNil(command("badgebar://toggle?app=com.apple.mail"), "Links can't tell which app is in front")
+        XCTAssertEqual(command("badgebar://mark-read?app=com.apple.mail"), .markRead(bundleID: "com.apple.mail"))
+        XCTAssertEqual(command("badgebar://mark-read"), .markRead(bundleID: nil))
+        XCTAssertEqual(command("badgebar://settings"), .settings)
+        XCTAssertNil(command("badgebar://open"), "Opening needs an app")
+        XCTAssertNil(command("badgebar://open?app="))
+        XCTAssertNil(command("badgebar://quit?app=com.apple.mail"))
+        XCTAssertNil(command("https://open?app=com.apple.mail"))
+    }
+
     // MARK: Settings files
 
     func testSettingsFileCarriesIconsToTheNewMac() throws {
@@ -104,6 +166,7 @@ final class IntegrationTests: XCTestCase {
     func testOlderSettingsGetNewDefaults() throws {
         let general = try JSONDecoder().decode(GeneralSettings.self, from: Data(#"{"pollInterval": 3}"#.utf8))
         XCTAssertTrue(general.clickToHide)
+        XCTAssertFalse(general.shareCounts)
         XCTAssertEqual(general.pollInterval, 3)
     }
 }

@@ -11,6 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let monitor = BadgeMonitor()
     private let router = SettingsRouter()
     private var statusBar: StatusBarController?
+    private var export: BadgeExport?
+    /// Links that arrive while BadgeBar is still starting up, handled once it's ready.
+    private var pendingLinks: [URL]? = []
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var cancellables: Set<AnyCancellable> = []
@@ -62,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             openGuide: { [weak self] in self?.showOnboarding() },
             checkForUpdates: { [weak self] in self?.updater.checkForUpdates(nil) }
         )
+        export = BadgeExport(store: store, monitor: monitor)
 
         // macOS sometimes applies a fresh Accessibility grant only after a relaunch.
         // Do that for the user instead of asking them to quit and reopen.
@@ -74,6 +78,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 Permissions.relaunch(resumingAt: onboarding ? .apps : nil)
             }
             .store(in: &cancellables)
+
+        if let links = pendingLinks {
+            pendingLinks = nil
+            if !links.isEmpty { application(NSApp, open: links) }
+        }
 
         let defaults = UserDefaults.standard
         if let raw = defaults.object(forKey: Permissions.resumeStepKey) as? Int,
@@ -102,6 +111,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { showSettings() }
         return true
+    }
+
+    /// `badgebar://` links from other apps, e.g. Raycast or a Stream Deck button.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        // A link that launches BadgeBar can arrive before the Dock has been read.
+        if pendingLinks != nil {
+            pendingLinks? += urls
+            return
+        }
+        // Opening a link activates BadgeBar. Unless a link opened an app or Settings, hand
+        // focus back, so BadgeBar's menus and windows don't take over.
+        var keepFocus = false
+        for url in urls {
+            switch URLCommand(url) {
+            case let .open(bundleID):
+                // Only apps BadgeBar shows, as clicking its icons would.
+                let known = store.apps.map(\.bundleID) + monitor.entries.map(\.bundleID)
+                if let id = known.first(where: { $0.lowercased() == bundleID.lowercased() }) {
+                    keepFocus = AppIcons.open(id) || keepFocus
+                }
+            case let .markRead(bundleID):
+                let badges = monitor.badges
+                let ids = bundleID.map { id in
+                    // Links may not match the bundle ID's letter case; badges are keyed by it.
+                    [badges.keys.first { $0.lowercased() == id.lowercased() } ?? id]
+                } ?? Array(badges.keys)
+                store.markRead(ids, badges: badges)
+            case .settings:
+                showSettings()
+                keepFocus = true
+            case nil:
+                break
+            }
+        }
+        if !keepFocus, NSApp.isActive { NSApp.hide(nil) }
+    }
+
+    /// Other tools shouldn't keep reading counts that are no longer kept up to date.
+    func applicationWillTerminate(_ notification: Notification) {
+        export?.stop()
     }
 
     // MARK: - Windows

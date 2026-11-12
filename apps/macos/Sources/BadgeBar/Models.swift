@@ -141,6 +141,8 @@ struct GeneralSettings: Codable, Hashable {
     var historyLimit = 10
     /// Clicking the icon of the app in front hides it, so a second click puts it away.
     var clickToHide = true
+    /// Writes unread counts to a file other tools can read, and announces each change.
+    var shareCounts = false
     var hasCompletedOnboarding = false
 
     init() {}
@@ -160,6 +162,7 @@ struct GeneralSettings: Codable, Hashable {
         showMessageContent = try c.decodeIfPresent(Bool.self, forKey: .showMessageContent) ?? d.showMessageContent
         historyLimit = try c.decodeIfPresent(Int.self, forKey: .historyLimit) ?? d.historyLimit
         clickToHide = try c.decodeIfPresent(Bool.self, forKey: .clickToHide) ?? d.clickToHide
+        shareCounts = try c.decodeIfPresent(Bool.self, forKey: .shareCounts) ?? d.shareCounts
         hasCompletedOnboarding = try c.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? d.hasCompletedOnboarding
     }
 }
