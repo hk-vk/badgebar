@@ -35,8 +35,9 @@ Free and open source. Needs macOS 14 or later, on Apple silicon or Intel.
 **One icon per app.** Any app that shows a badge on the Dock can have a menu bar icon. Icons dim
 when there's nothing new, or you can hide them until something arrives.
 
-**Click to open, right-click to read.** Click an icon to open its app, like the Dock. Right-click
-it to see who wrote and what they said, mark everything as read, or show all its messages.
+**Click to open, right-click to read.** Click an icon to open its app, like the Dock, and click
+again to hide it. Right-click it to see who wrote and what they said, mark everything as read, or
+show all its messages.
 
 **Optionally show apps you haven't added.** Turn it on and any app with a badge appears on its own
 until its badge clears, so nothing slips by.
@@ -69,6 +70,12 @@ open it.
 
 **Light and dark app icon.** Pick Automatic, Light or Dark in Settings.
 
+**Take your setup along.** Export your apps, groups, icons and settings to a file, and import it
+on another Mac.
+
+**Works with your other tools.** Share unread counts with SketchyBar, Raycast, Shortcuts or your
+own scripts. See [Integrations](#integrations).
+
 ## Getting started
 
 1. Install with [Homebrew](https://brew.sh):
@@ -94,7 +101,58 @@ That's it. There's no account and nothing else to configure. To update, run
 
 BadgeBar checks for software updates daily and when you choose Check for Updates. Message text is read from Notification Center's history
 on your Mac and stays there. Marking messages as read only hides them in BadgeBar; macOS doesn't let
-other apps change Notification Center or an app's own badge.
+other apps change Notification Center or an app's own badge. If you turn on sharing unread counts,
+other apps on your Mac can read each app's count, but never message text.
+
+## Integrations
+
+Turn on **Share unread counts with other apps** in Settings ▸ General. BadgeBar then keeps
+`~/Library/Application Support/BadgeBar/badges.json` up to date:
+
+```json
+{
+  "version": 1,
+  "updatedAt": "2026-11-12T10:42:00Z",
+  "total": 15,
+  "apps": [
+    { "bundleID": "com.tinyspeck.slackmacgap", "name": "Slack", "label": "12", "count": 12,
+      "running": true, "tracked": true, "group": "Chat" },
+    { "bundleID": "com.apple.MobileSMS", "name": "Messages", "label": "3", "count": 3,
+      "running": true, "tracked": false }
+  ]
+}
+```
+
+- `apps` lists the apps you added, in menu bar order, then other apps that have a badge.
+- `label` is the badge as the Dock shows it, and `count` is its number. Both are left out when an
+  app has nothing new, and `count` is left out for a badge without a number, like `•`.
+- Apps you marked as read count as having nothing new until something new arrives.
+- Fields may be added in later versions; existing ones keep their meaning while `version` is 1.
+
+Each time the file changes, BadgeBar posts the distributed notification
+`io.github.hk-vk.badgebar.changed`, so you don't need to poll it. The file is removed, with the
+same notification, when you turn sharing off, when BadgeBar loses Accessibility access and when it
+quits, so a missing file means the counts aren't known.
+
+For example, a [SketchyBar](https://github.com/FelixKratz/SketchyBar) item that shows the total:
+
+```sh
+sketchybar --add event badgebar_changed io.github.hk-vk.badgebar.changed \
+           --add item unread right \
+           --set unread script='sketchybar --set $NAME label="$(jq .total ~/Library/Application\ Support/BadgeBar/badges.json)"' \
+           --subscribe unread badgebar_changed
+```
+
+BadgeBar also opens `badgebar://` links, from Raycast, Shortcuts, a Stream Deck or the `open`
+command:
+
+| Link | What it does |
+| --- | --- |
+| `badgebar://open?app=com.apple.mail` | Opens the app, if it's one you added or it's in the Dock |
+| `badgebar://mark-read?app=com.apple.mail` | Marks the app's messages as read; leave out `app` for every app |
+| `badgebar://settings` | Opens Settings |
+
+Links work whether or not sharing is on. They can only do what clicking BadgeBar's icons does.
 
 ## How it works
 

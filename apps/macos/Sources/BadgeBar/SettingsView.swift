@@ -394,6 +394,13 @@ private struct MenuBarPane: View {
                 FooterNote("Icons with a badge always show. Apps and groups can override the first setting on their own pages.")
             }
 
+            Section("Clicking Icons") {
+                Toggle(isOn: $store.general.clickToHide) {
+                    Text("Click again to hide an app")
+                    Text("Clicking the icon of the app you're using hides it, so one click opens it and the next puts it away.")
+                }
+            }
+
             Section {
                 LabeledContent("Animation") {
                     EffectPicker(effect: $store.general.badgeEffect, icon: sampleIcon, appearance: sampleAppearance)
@@ -783,6 +790,48 @@ private struct GeneralPane: View {
                 Text("BadgeBar")
             } footer: {
                 FooterNote("The app icon shows in the Dock while this window is open. Automatic follows System Settings ▸ Appearance.")
+            }
+
+            Section {
+                Toggle(isOn: $store.general.shareCounts) {
+                    Text("Share unread counts with other apps")
+                    Text("For SketchyBar, Raycast, Shortcuts and scripts. Counts only, never message text.")
+                }
+                if store.general.shareCounts {
+                    LabeledContent("Counts file") {
+                        Button("Show in Finder") {
+                            guard let url = BadgeExport.fileURL else { return }
+                            if FileManager.default.fileExists(atPath: url.path) {
+                                NSWorkspace.shared.activateFileViewerSelecting([url])
+                            } else {
+                                // Not written yet, e.g. while Accessibility access is missing.
+                                let folder = url.deletingLastPathComponent()
+                                try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                                NSWorkspace.shared.open(folder)
+                            }
+                        }
+                        .nativeButton()
+                    }
+                }
+            } header: {
+                Text("Integrations")
+            } footer: {
+                FooterNote("BadgeBar keeps badges.json up to date and posts io.github.hk-vk.badgebar.changed when it changes. Links like badgebar://open?app=com.apple.mail open an app you added from other tools.")
+            }
+
+            Section {
+                LabeledContent("Apps, groups and settings") {
+                    HStack {
+                        Button("Export…") { SettingsTransfer.export(store) }
+                            .nativeButton()
+                        Button("Import…") { SettingsTransfer.import(into: store) }
+                            .nativeButton()
+                    }
+                }
+            } header: {
+                Text("Back Up and Move")
+            } footer: {
+                FooterNote("Saves your apps, groups, icons and settings to a file you can import on another Mac. Notification history isn't included.")
             }
 
             Section {

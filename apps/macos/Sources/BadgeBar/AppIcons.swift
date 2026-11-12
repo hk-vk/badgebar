@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 /// Looks up and caches app icons and SF Symbols used across the UI.
 @MainActor
@@ -55,12 +56,18 @@ enum AppIcons {
     /// Copies an image chosen as an icon into BadgeBar's own folder, so the icon keeps working
     /// if the original is moved or deleted. Returns the copy's path.
     static func importCustomIcon(from url: URL) -> String? {
-        guard let folder = customIconFolder, NSImage(contentsOf: url) != nil else { return nil }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return saveCustomIcon(data, pathExtension: url.pathExtension)
+    }
+
+    /// Saves image data as an icon in BadgeBar's own folder, under a new name. Returns its path.
+    static func saveCustomIcon(_ data: Data, pathExtension: String) -> String? {
+        guard let folder = customIconFolder, NSImage(data: data) != nil else { return nil }
         let copy = folder.appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension(url.pathExtension.isEmpty ? "png" : url.pathExtension)
+            .appendingPathExtension(pathExtension.isEmpty ? "png" : pathExtension)
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: url, to: copy)
+            try data.write(to: copy)
             return copy.path
         } catch {
             return nil
@@ -70,18 +77,10 @@ enum AppIcons {
     /// Saves an app's icon as an image in BadgeBar's own folder, for using it as another
     /// item's icon. Returns the image's path.
     static func importAppIcon(_ bundleID: String) -> String? {
-        guard let folder = customIconFolder else { return nil }
         var rect = NSRect(x: 0, y: 0, width: 256, height: 256)
         guard let cgImage = icon(for: bundleID).cgImage(forProposedRect: &rect, context: nil, hints: nil),
               let png = NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) else { return nil }
-        let copy = folder.appendingPathComponent(UUID().uuidString).appendingPathExtension("png")
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try png.write(to: copy)
-            return copy.path
-        } catch {
-            return nil
-        }
+        return saveCustomIcon(png, pathExtension: "png")
     }
 
     /// An app's name as Finder shows it.
@@ -140,11 +139,70 @@ enum AppIcons {
         Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier?.lowercased() })
     }
 
-    static func open(_ bundleID: String) {
-        guard let url = url(for: bundleID) else { return }
+    /// Opens an app, or brings it forward. Returns false if no app has that bundle ID.
+    @discardableResult
+    static func open(_ bundleID: String) -> Bool {
+        guard let url = url(for: bundleID) else { return false }
         // openApplication (rather than activate) also reopens a window if the app has none.
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: config)
+        return true
+    }
+
+    private static let log = Logger(subsystem: "io.github.hk-vk.badgebar", category: "clicks")
+
+    /// Opens an app, or hides it if it's the app you're using, so a second click on its icon
+    /// puts it away again. That means it's the active app and owns the window on top. An app
+    /// whose windows are closed or behind others is opened instead, which brings a window
+    /// forward, as the Dock does. When in doubt it opens, which is harmless.
+    static func toggle(_ bundleID: String, hidesWhenActive: Bool) {
+        let target = bundleID.lowercased()
+        // The active app alone isn't enough: it can have no windows (say, Finder after a click
+        // on the desktop) while another app's window is on top. The window on top alone isn't
+        // either: BadgeBar's own Settings window may be covering it.
+        let top = topWindowOwner()
+        let active = NSWorkspace.shared.frontmostApplication
+        let inFront = top?.bundleIdentifier?.lowercased() == target
+            && active?.bundleIdentifier?.lowercased() == target
+        if hidesWhenActive, inFront, let top {
+            let hidden = hide(top)
+            log.debug("click \(bundleID, privacy: .public): in front, hide -> \(hidden)")
+            // Opening it instead would only flash it, so a failed hide does nothing.
+            return
+        } else {
+            log.debug("click \(bundleID, privacy: .public): top window \(top?.bundleIdentifier ?? "none", privacy: .public), active app \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none", privacy: .public), open")
+        }
+        open(bundleID)
+    }
+
+    /// Hides an app. macOS refuses `NSRunningApplication.hide()` from an app that isn't active,
+    /// which BadgeBar isn't while its menu bar icons are clicked, so this goes through
+    /// Accessibility, which BadgeBar has for reading badges.
+    private static func hide(_ app: NSRunningApplication) -> Bool {
+        let element = AXUIElementCreateApplication(app.processIdentifier)
+        if AXUIElementSetAttributeValue(element, kAXHiddenAttribute as CFString, kCFBooleanTrue) == .success {
+            return true
+        }
+        return app.hide()
+    }
+
+    /// The app that owns the frontmost normal window on screen, ignoring BadgeBar's own
+    /// windows and tiny or transparent helper windows. These details are readable without the
+    /// Screen Recording permission. The list comes front to back.
+    private static func topWindowOwner() -> NSRunningApplication? {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] ?? []
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        for window in windows {
+            guard let pid = window[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID,
+                  (window[kCGWindowLayer as String] as? Int) == 0,
+                  (window[kCGWindowAlpha as String] as? Double ?? 1) > 0,
+                  let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds),
+                  rect.width > 50, rect.height > 50 else { continue }
+            return NSRunningApplication(processIdentifier: pid)
+        }
+        return nil
     }
 }
