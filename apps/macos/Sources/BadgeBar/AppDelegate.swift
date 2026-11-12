@@ -79,11 +79,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             .store(in: &cancellables)
 
-        if let links = pendingLinks {
-            pendingLinks = nil
-            if !links.isEmpty { application(NSApp, open: links) }
-        }
-
         let defaults = UserDefaults.standard
         if let raw = defaults.object(forKey: Permissions.resumeStepKey) as? Int,
            let step = OnboardingStep(rawValue: raw) {
@@ -93,6 +88,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             showOnboarding()
         } else if !monitor.isTrusted {
             showOnboarding(at: .accessibility)
+        }
+
+        // After the welcome guide is up, so a link can't push it out of the way.
+        if let links = pendingLinks {
+            pendingLinks = nil
+            if !links.isEmpty { application(NSApp, open: links) }
         }
     }
 
@@ -120,8 +121,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             pendingLinks? += urls
             return
         }
-        // Opening a link activates BadgeBar. Unless a link opened an app or Settings, hand
-        // focus back, so BadgeBar's menus and windows don't take over.
+        // Opening a link activates BadgeBar. Unless a link opened an app or Settings, step back
+        // so BadgeBar's menus and windows don't take over. Deactivating, rather than hiding,
+        // leaves any BadgeBar window where it was.
         var keepFocus = false
         for url in urls {
             switch URLCommand(url) {
@@ -145,7 +147,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 break
             }
         }
-        if !keepFocus, NSApp.isActive { NSApp.hide(nil) }
+        let guideOpen = onboardingWindow?.isVisible == true
+        if !keepFocus, !guideOpen, NSApp.isActive { NSApp.deactivate() }
     }
 
     /// Other tools shouldn't keep reading counts that are no longer kept up to date.

@@ -169,7 +169,8 @@ final class BadgeExport {
 /// Any app or web page can open these links, so they only do what clicking BadgeBar's icons
 /// can do: open an app BadgeBar shows, mark messages as read, or show Settings.
 enum URLCommand: Equatable {
-    /// Opens an app BadgeBar shows, like clicking its icon.
+    /// Opens an app BadgeBar shows. Unlike clicking its icon, it never hides the app: opening a
+    /// link activates BadgeBar, so a link can't tell which app was in front.
     case open(bundleID: String)
     /// Marks the given app's messages as read, or every app's when nil.
     case markRead(bundleID: String?)

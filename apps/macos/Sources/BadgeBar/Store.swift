@@ -197,8 +197,9 @@ final class Store: ObservableObject {
         var newGeneral = file.general
         // The welcome guide is about this Mac's permissions, which don't come with the file.
         newGeneral.hasCompletedOnboarding = general.hasCompletedOnboarding
-        apps = imported.apps
+        // Groups first, so the apps that refer to them never point at missing groups.
         groups = imported.groups
+        apps = imported.apps
         general = newGeneral
         let kept = Set(apps.compactMap(\.customIconPath) + groups.compactMap(\.customIconPath))
         for path in oldIcons where path.map({ !kept.contains($0) }) ?? false {

@@ -152,15 +152,19 @@ enum AppIcons {
 
     private static let log = Logger(subsystem: "io.github.hk-vk.badgebar", category: "clicks")
 
-    /// Opens an app, or hides it if its window is the one in front, so a second click on its
-    /// icon puts it away again. An app whose windows are all closed or behind others is opened
-    /// instead, which brings a window forward, as the Dock does.
+    /// Opens an app, or hides it if it's the app you're using, so a second click on its icon
+    /// puts it away again. That means it's the active app and owns the window on top. An app
+    /// whose windows are closed or behind others is opened instead, which brings a window
+    /// forward, as the Dock does. When in doubt it opens, which is harmless.
     static func toggle(_ bundleID: String, hidesWhenActive: Bool) {
         let target = bundleID.lowercased()
-        // The window server knows right away which window is on top. NSWorkspace's
-        // frontmostApplication is updated asynchronously and can lag when switching fast.
+        // The active app alone isn't enough: it can have no windows (say, Finder after a click
+        // on the desktop) while another app's window is on top. The window on top alone isn't
+        // either: BadgeBar's own Settings window may be covering it.
         let top = topWindowOwner()
+        let active = NSWorkspace.shared.frontmostApplication
         let inFront = top?.bundleIdentifier?.lowercased() == target
+            && active?.bundleIdentifier?.lowercased() == target
         if hidesWhenActive, inFront, let top {
             let hidden = hide(top)
             log.debug("click \(bundleID, privacy: .public): in front, hide -> \(hidden)")
