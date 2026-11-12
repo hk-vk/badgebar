@@ -77,14 +77,7 @@ final class PreviewPopover: NSObject {
         let opening = !panel.isVisible
         anchorKey = key
         fitContent()
-        if opening {
-            panel.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0
-            panel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.12
-                panel.animator().alphaValue = 1
-            }
-        }
+        if opening { panel.fadeIn(duration: 0.12) }
         watchOutsideClicks()
         // Text and images finish laying out once the panel is on screen; fit again then.
         DispatchQueue.main.async { [weak self] in self?.fitContent() }
@@ -151,7 +144,7 @@ final class PreviewPopover: NSObject {
 
 /// A borderless panel with the system popover material. It never becomes key, so using a
 /// preview doesn't steal focus from the app you're working in.
-private final class PreviewPanel: NSPanel {
+final class PreviewPanel: NSPanel {
     private let background = NSVisualEffectView()
 
     init() {
@@ -177,6 +170,15 @@ private final class PreviewPanel: NSPanel {
         view.frame = background.bounds
         view.autoresizingMask = [.width, .height]
         background.addSubview(view)
+    }
+
+    func fadeIn(duration: TimeInterval) {
+        alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0
+        orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            animator().alphaValue = 1
+        }
     }
 
     override var canBecomeKey: Bool { false }
