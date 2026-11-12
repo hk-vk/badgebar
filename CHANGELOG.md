@@ -2,6 +2,13 @@
 
 What changed in each release of BadgeBar. The release workflow copies a version's section into its GitHub release notes, so add one before tagging.
 
+## 0.4.0
+
+- **Click again to hide.** Clicking the icon of the app you're using hides it, so one click opens an app and the next puts it away. An app in front with no window open gets a window back instead. Turn it off under Menu Bar ▸ Clicking Icons in Settings.
+- **Take your setup to another Mac.** Settings ▸ General ▸ Back Up and Move exports your apps, groups, custom icons and settings to a file, and imports one. Notification history stays on the Mac it belongs to.
+- **Share unread counts with other apps.** Turn it on under Integrations in Settings ▸ General, and SketchyBar, Raycast, Shortcuts or your own scripts can show your counts. They're told as soon as a count changes, so they don't need to check over and over. Only counts are shared, never message text. `badgebar://` links can open an app, mark messages as read or open Settings. See the README for the details and a SketchyBar example.
+- After setup, BadgeBar asks once whether you'd like to star it on GitHub.
+
 ## 0.3.2
 
 - **Automatic updates.** BadgeBar now checks for updates once a day, and its menu has a Check for Updates… item. Downloads are signed and verified before they're installed. This version has to be installed by hand, since older versions can't update themselves. Later ones will arrive on their own.
