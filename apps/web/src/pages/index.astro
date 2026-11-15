@@ -15,7 +15,7 @@ const download = `${repo}/releases/latest`;
 const source = `${repo}#build`;
 
 // Link previews need absolute URLs.
-const site = Astro.site ?? 'https://badgebar.hari.works';
+const site = Astro.site!;
 const description = "BadgeBar is a free, open source Mac app that shows your apps' unread counts in the menu bar, so you can hide the Dock and still see what's new at a glance.";
 const ogImage = new URL(asset('og.png'), site).href;
 const ogAlt = 'BadgeBar: hide the Dock, keep the badges. A menu bar with unread counts on three app icons.';
@@ -34,7 +34,7 @@ const jsonLd = {
   applicationCategory: 'UtilitiesApplication',
   operatingSystem: 'macOS',
   downloadUrl: download,
-  license: 'https://opensource.org/licenses/MIT',
+  license: `${repo}/blob/main/LICENSE`,
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 };
 
@@ -69,7 +69,7 @@ const facts = [
     <link rel="icon" href={asset('badgebar-light.png')} media="(prefers-color-scheme: light)" />
     <link rel="icon" href={asset('badgebar-dark.png')} media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
-    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, '\\u003c')} />
     <ThemeScript />
   </head>
   <body>
