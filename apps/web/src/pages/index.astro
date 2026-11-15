@@ -15,11 +15,28 @@ const download = `${repo}/releases/latest`;
 const source = `${repo}#build`;
 
 // Link previews need absolute URLs.
-const site = Astro.site ?? 'https://badgebar.hari.works';
-const description = "BadgeBar puts your apps' unread counts in the macOS menu bar, so you can hide the Dock and still see what's new.";
+const site = Astro.site!;
+const description = "BadgeBar is a free, open source Mac app that shows your apps' unread counts in the menu bar, so you can hide the Dock and still see what's new at a glance.";
 const ogImage = new URL(asset('og.png'), site).href;
 const ogAlt = 'BadgeBar: hide the Dock, keep the badges. A menu bar with unread counts on three app icons.';
-const title = 'BadgeBar: unread badges in your Mac menu bar';
+const title = 'BadgeBar: free, open source unread badges in your Mac menu bar';
+
+const pageUrl = new URL(asset(''), site).href;
+
+// Tells search engines this page is about a free macOS app.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'BadgeBar',
+  description,
+  url: pageUrl,
+  image: ogImage,
+  applicationCategory: 'UtilitiesApplication',
+  operatingSystem: 'macOS',
+  downloadUrl: download,
+  license: `${repo}/blob/main/LICENSE`,
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
 
 const facts = [
   { term: 'Made for a hidden Dock', detail: 'Works alongside menu bar managers like Bartender and Ice. ⌘-drag the icons to put them where you like.' },
@@ -36,7 +53,8 @@ const facts = [
     <title>{title}</title>
     <meta name="description" content={description} />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content={new URL(asset(''), site).href} />
+    <link rel="canonical" href={pageUrl} />
+    <meta property="og:url" content={pageUrl} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
@@ -51,6 +69,7 @@ const facts = [
     <link rel="icon" href={asset('badgebar-light.png')} media="(prefers-color-scheme: light)" />
     <link rel="icon" href={asset('badgebar-dark.png')} media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, '\\u003c')} />
     <ThemeScript />
   </head>
   <body>

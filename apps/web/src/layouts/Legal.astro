@@ -12,6 +12,7 @@ interface Props {
   updated: string;
 }
 const { title, description, updated } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
 ---
 
 <!doctype html>
@@ -21,6 +22,7 @@ const { title, description, updated } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title} | BadgeBar</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
     <link rel="icon" href={asset('badgebar-light.png')} media="(prefers-color-scheme: light)" />
     <link rel="icon" href={asset('badgebar-dark.png')} media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
