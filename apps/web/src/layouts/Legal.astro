@@ -9,7 +9,7 @@ import { asset } from '../components/store';
 interface Props {
   title: string;
   description: string;
-  updated: string;
+  updated?: string;
 }
 const { title, description, updated } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
@@ -39,7 +39,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
 
     <main class="legal mx-auto max-w-[680px] px-5 pt-12 pb-24 sm:px-8 sm:pt-16">
       <h1 class="display">{title}</h1>
-      <p class="legal-updated">Last updated {updated}</p>
+      {updated && <p class="legal-updated">Last updated {updated}</p>}
       <slot />
     </main>
 

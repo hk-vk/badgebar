@@ -1,0 +1,31 @@
+---
+import Legal from '../../layouts/Legal.astro';
+import { asset } from '../../components/store';
+
+interface Post {
+  url: string;
+  frontmatter: { title: string; description: string; published: string };
+}
+const posts = Object.values(import.meta.glob<Post>('./*.md', { eager: true })).sort((a, b) =>
+  b.frontmatter.published.localeCompare(a.frontmatter.published),
+);
+const slug = (url: string) => url.replace(/^.*\/blog\//, '');
+---
+
+<Legal
+  title="Blog"
+  description="Guides to hiding the Dock, managing the menu bar and keeping up with notifications on your Mac."
+>
+  <ul class="blog-list" style="list-style: none; padding-left: 0; margin-top: 32px;">
+    {
+      posts.map((post) => (
+        <li>
+          <h2>
+            <a href={asset(`blog/${slug(post.url)}/`)}>{post.frontmatter.title}</a>
+          </h2>
+          <p>{post.frontmatter.description}</p>
+        </li>
+      ))
+    }
+  </ul>
+</Legal>
