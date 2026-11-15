@@ -1,0 +1,89 @@
+---
+// A blog post written in Markdown. Pages in src/pages/blog/ set `layout` to this file.
+import '@fontsource-variable/bricolage-grotesque';
+import '../styles/global.css';
+import ThemeScript from '../components/ThemeScript.astro';
+import Footer from '../components/Footer.astro';
+import { asset } from '../components/store';
+
+interface Props {
+  frontmatter: { title: string; description: string; published: string; updated?: string };
+}
+const { title, description, published, updated } = Astro.props.frontmatter;
+
+const repo = import.meta.env.PUBLIC_REPO_URL || 'https://github.com/hk-vk/badgebar';
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const ogImage = new URL(asset('og.png'), Astro.site).href;
+const date = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: title,
+  description,
+  datePublished: published,
+  dateModified: updated ?? published,
+  url: canonical,
+  image: ogImage,
+  author: { '@type': 'Person', name: 'Harikrishnan V K' },
+  publisher: { '@type': 'Organization', name: 'BadgeBar', url: new URL(asset(''), Astro.site).href },
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} | BadgeBar</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <link rel="icon" href={asset('badgebar-light.png')} media="(prefers-color-scheme: light)" />
+    <link rel="icon" href={asset('badgebar-dark.png')} media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, '\\u003c')} />
+    <ThemeScript />
+  </head>
+  <body>
+    <header class="mx-auto flex h-16 max-w-[1120px] items-center justify-between px-5 sm:px-8">
+      <a href={asset('')} class="flex items-center gap-2.5 font-semibold">
+        <img src={asset('badgebar-light.png')} alt="" class="size-7 dark:hidden" />
+        <img src={asset('badgebar-dark.png')} alt="" class="hidden size-7 dark:block" />
+        BadgeBar
+      </a>
+      <a href={asset('blog/')} class="text-sm text-muted hover:text-ink">Blog</a>
+    </header>
+
+    <main class="legal post mx-auto max-w-[680px] px-5 pt-12 pb-16 sm:px-8 sm:pt-16">
+      <h1 class="display">{title}</h1>
+      <p class="legal-updated">
+        {date(published)}{updated && updated !== published && <> · Updated {date(updated)}</>}
+      </p>
+      <slot />
+
+      <aside class="post-cta">
+        <p class="post-cta-title">Hide the Dock, keep the badges</p>
+        <p>
+          BadgeBar puts each app's unread count in the menu bar, so you can hide the Dock and still
+          see what's new. Free and open source, for macOS 14 or later.
+        </p>
+        <p class="post-cta-actions">
+          <a href={asset('')}>Get BadgeBar</a>
+          <a href={repo}>View the source</a>
+        </p>
+      </aside>
+    </main>
+
+    <Footer />
+  </body>
+</html>
